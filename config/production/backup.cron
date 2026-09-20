@@ -1,0 +1,17 @@
+# ==============================================================================
+# SenseAI Voice Assistant — Production Crontab Configuration (Phase 15)
+# Installs daily automated backup and data retention pruning at 02:00 AM.
+# ==============================================================================
+# Usage:
+#   crontab config/production/backup.cron
+#   or add to /etc/cron.d/senseai-backup on the host/container.
+#
+# Environment variables loaded from /etc/default/senseai or backup-config.env
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# 02:00 AM Daily: Run database and index backup script
+0 2 * * * cd /opt/senseai && bash scripts/database/backup.sh >> /var/log/senseai/backup.log 2>&1
+
+# 03:00 AM Sunday: Run data retention pruning (remove records older than 30 days)
+0 3 * * 0 cd /opt/senseai && python3 -c "from src.backend.database.storage import EmotionStorage; es = EmotionStorage(); es.prune_expired_records(retention_days=30)" >> /var/log/senseai/retention.log 2>&1

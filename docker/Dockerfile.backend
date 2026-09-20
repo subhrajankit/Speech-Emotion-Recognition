@@ -1,0 +1,56 @@
+# ==============================================================================
+# SenseAI Voice Assistant — Backend Dockerfile (Phase 12)
+# Multi-stage / lightweight Python 3.11 container for FastAPI & audio pipeline
+# ==============================================================================
+
+FROM python:3.11-slim-bookworm AS base
+
+# Prevent Python from writing .pyc files and enable unbuffered logging
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    HOST=0.0.0.0 \
+    PORT=8000
+
+# Install system dependencies (libsndfile for audio I/O, ffmpeg, curl for health checks)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy and install python dependencies
+COPY src/backend/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
+
+# Create non-root system user for container security
+RUN groupadd -g 10001 senseai && \
+    useradd -u 10001 -g senseai -s /bin/bash -m senseai
+
+# Copy application source code and data assets
+COPY src /app/src
+COPY database /app/database
+COPY data /app/data
+COPY scripts /app/scripts
+COPY monitoring /app/monitoring
+COPY security /app/security
+COPY config /app/config
+
+# Ensure appropriate permissions for application directories
+RUN mkdir -p /app/logs /app/data/documents /app/data/index && \
+    chown -R senseai:senseai /app
+
+USER senseai
+
+# Expose internal FastAPI service port
+EXPOSE 8000
+
+# Container Health Check targeting /health endpoint
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://127.0.0.1:8000/health || exit 1
+
+# Launch production ASGI server
+CMD ["uvicorn", "src.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,48 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN=<your-token>",
+        "ghcr.io/github/github-mcp-server"
+      ]
+    },
+    "sqlite": {
+      "command": "mcp-server-sqlite",
+      "args": [
+        "--database",
+        "./database/dev.db",
+        "--preset",
+        "read-only"
+      ]
+    },
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "PGHOST=localhost",
+        "-e",
+        "PGUSER=<user>",
+        "-e",
+        "PGPASSWORD=<pass>",
+        "-e",
+        "PGDATABASE=<db>",
+        "crystaldba/postgres-mcp:latest"
+      ]
+    },
+    "senseai": {
+      "command": "python",
+      "args": [
+        "-m",
+        "src.backend.mcp_server.server"
+      ]
+    }
+  }
+}

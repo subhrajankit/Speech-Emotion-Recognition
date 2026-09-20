@@ -1,0 +1,60 @@
+# ==============================================================================
+# SenseAI Voice Assistant — Development Docker Compose (Phase 12)
+# ==============================================================================
+
+services:
+  # 1. Separated LLM Model Serving Layer (CPU / local container)
+  llm-server:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: senseai-llm-dev
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../models:/models:ro
+    command: >
+      -m /models/qwen3-1.7b.gguf
+      --host 0.0.0.0
+      --port 8080
+      -c 4096
+      -ngl 0
+    restart: unless-stopped
+
+  # 2. FastAPI Audio Pipeline Backend
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: senseai-backend-dev
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=true
+      - MOCK_MODELS=true
+      - LLAMA_CPP_URL=http://llm-server:8080/v1
+      - REQUIRE_AUTH=false
+      - DATABASE_PATH=database/dev.db
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ../src:/app/src
+      - ../data:/app/data
+      - ../database:/app/database
+      - ../monitoring:/app/monitoring
+      - ../security:/app/security
+    depends_on:
+      - llm-server
+    restart: unless-stopped
+
+  # 3. React Frontend Dev Service
+  frontend:
+    image: node:20-alpine
+    container_name: senseai-frontend-dev
+    working_dir: /app
+    volumes:
+      - ../src/frontend:/app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped

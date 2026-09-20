@@ -1,0 +1,59 @@
+name: Scheduled Database & Vector Index Backup
+
+on:
+  schedule:
+    # Run daily at 02:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allows manual triggering from GitHub Actions UI
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Run Database Backup & Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydantic-settings numpy soundfile faiss-cpu
+
+      - name: Prepare database and document directories
+        run: |
+          mkdir -p database data/documents data/index backups
+          # Seed minimal dev database if not present
+          python -c "from src.backend.database.storage import EmotionStorage; es = EmotionStorage('database/dev.db'); es.save_emotion_event('ci_session', 'neutral', 0.9, 0.0, 0.0, 'ci test')"
+
+      - name: Execute Backup Script
+        run: |
+          chmod +x scripts/database/backup.sh
+          bash scripts/database/backup.sh
+
+      - name: Verify Backup Checksums
+        run: |
+          for chk in backups/*.sha256; do
+            if [ -f "$chk" ]; then
+              echo "Verifying $chk..."
+              sha256sum -c "$chk"
+            fi
+          done
+
+      - name: Upload Backup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: senseai-backup-${{ github.run_id }}
+          path: backups/
+          retention-days: 7

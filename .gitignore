@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+ENV/
+
+# Node / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp/
+.pnp.js
+dist/
+dist-ssr/
+*.local
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+!config/**/.env.example
+*.pem
+*.key
+*.crt
+*.pfx
+security/secrets/
+!security/secrets.example/**
+
+# Models & Large Checkpoints (Local-only, do not commit)
+models/
+*.gguf
+*.onnx
+*.bin
+*.safetensors
+*.pt
+*.tar.gz
+*.zip
+
+# Database & Vectors
+database/*.db*
+database/*.sqlite*
+database/*.faiss
+database/backups/*
+!database/backups/.gitkeep
+data/index/*.index
+data/index/*.faiss
+data/index/chunks.json
+!data/index/.gitkeep
+
+# Audio temporary files (Strict zero-persistence rule)
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.webm
+tmp_audio/
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# IDE & OS & Tooling
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.aider-desk/
+
+# Test & Coverage
+.coverage
+htmlcov/
+.pytest_cache/

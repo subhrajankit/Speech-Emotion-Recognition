@@ -1,0 +1,39 @@
+# ==============================================================================
+# SenseAI Voice Assistant — Frontend Dockerfile (Phase 12)
+# Multi-stage production build: Node.js Vite compiler -> Nginx Alpine runtime
+# ==============================================================================
+
+# Stage 1: Build static production bundle
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+COPY src/frontend/package*.json ./
+RUN npm ci
+
+# Copy frontend source code
+COPY src/frontend/ ./
+
+# Compile TypeScript and bundle static assets with Vite
+RUN npm run build
+
+# Stage 2: Serve static bundle via hardened Nginx Alpine
+FROM nginx:alpine AS runtime
+
+# Remove default nginx welcome page
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy compiled production artifacts
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy reverse-proxy Nginx configuration
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose standard HTTP port
+EXPOSE 80
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
