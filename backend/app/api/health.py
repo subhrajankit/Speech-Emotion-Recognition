@@ -5,6 +5,7 @@ Handles GET /api/health returning per-component readiness and overall health.
 
 from fastapi import APIRouter
 from backend.app.services.speech_service import speech_service
+from backend.app.services.llm_service import llm_service
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -13,7 +14,12 @@ router = APIRouter(prefix="/api", tags=["health"])
 async def health_check():
     """
     Returns system health status:
-    - per-component status: asr, emotion, and placeholders for llm, rag, tts, db as 'not_configured'
+    - per-component status: asr, emotion, llm, and placeholders for rag, tts, db
     - overall status: 'ok' or 'degraded' (never fails just because optional components are down)
     """
-    return speech_service.get_health_status()
+    health = speech_service.get_health_status()
+    await llm_service.check_health()
+    llm_report = llm_service.get_health_status()
+    health["components"]["llm"] = llm_report["status"]
+    health["details"]["llm"] = llm_report
+    return health

@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     LID_CONFIDENCE_THRESHOLD: float = 0.6
     MOCK_MODELS: bool = False
 
+    # LLM Settings (Qwen3 via local llama.cpp)
+    LLM_BASE_URL: str = "http://127.0.0.1:8080"
+    LLM_MODEL_NAME: str = "qwen3-1.7b"
+    LLM_TIMEOUT_SECONDS: float = 30.0
+    LLM_MAX_TOKENS: int = 256
+    LLM_ENABLE_THINKING: bool = False
+    LLM_HEALTH_CACHE_SECONDS: float = 5.0
+    LLM_FAILURE_THRESHOLD: int = 3
+    LLM_COOLDOWN_SECONDS: float = 15.0
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

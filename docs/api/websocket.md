@@ -113,8 +113,26 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-5. **Error Frame (`error`)**:
-   Emitted upon protocol violation, buffer overflow, or unrecoverable error:
+5. **LLM Token Delta (`llm_delta`)**:
+   Emitted progressively as each generated token arrives from the local LLM server. Dispatched strictly after `speech_result`.
+   ```json
+   {
+     "type": "llm_delta",
+     "delta": "Hello"
+   }
+   ```
+
+6. **LLM Completion (`llm_done`)**:
+   Emitted once the LLM stream has finished, containing the full aggregated response text.
+   ```json
+   {
+     "type": "llm_done",
+     "text": "Hello! I hear you're feeling happy today. How can I help?"
+   }
+   ```
+
+7. **Error Frame (`error`)**:
+   Emitted upon protocol violation, buffer overflow, or upstream/service error:
    ```json
    {
      "type": "error",
@@ -122,14 +140,21 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      "message": "Connection buffer limit (5242880 bytes) exceeded."
    }
    ```
+   Or when LLM is unreachable/timed out:
+   ```json
+   {
+     "type": "error",
+     "code": "llm_unavailable",
+     "message": "Cannot connect to local LLM server at http://127.0.0.1:8080/v1/chat/completions"
+   }
+   ```
+   > **Note**: An `llm_unavailable` error keeps the WebSocket connection open so subsequent voice turns can still be transcribed.
 
 ---
 
 ## 3. Reserved Message Types
 
-The following message types are reserved for downstream phases (LLM streaming, TTS audio streaming) and must be ignored safely without raising errors or dropping connections:
-- `llm_delta`
-- `llm_done`
+The following message types are reserved for downstream phases (TTS audio streaming) and must be ignored safely without raising errors or dropping connections:
 - `tts_chunk`
 - `tts_done`
 - `status`

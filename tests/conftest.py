@@ -12,6 +12,9 @@ import struct
 import sys
 from pathlib import Path
 
+# Enforce 1 OpenBLAS thread to prevent memory allocation failures on Windows
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 # Ensure repo root is at the head of sys.path, and tests dir does not shadow root packages
 _repo_root = str(Path(__file__).parent.parent.resolve())
 _tests_dir = str(Path(__file__).parent.resolve())

@@ -378,6 +378,25 @@
   - Single pipeline invariant fully maintained.
   - Complete isolation between Hindi ASR and future Phase 5 Hindi emotion recognition.
 
-
-
-
+## ADR 026: Decoupled LLM Service, Thinking Mode Disabling, and Ordering Invariant (Phase 6 Migration)
+- **Context**:
+  FastAPI backend requires integration with Qwen3 served locally via `llama-server` (llama.cpp) over an OpenAI-compatible HTTP interface (`/v1/chat/completions`). The integration must maintain strict architectural isolation: ASR and emotion recognition must never import or depend on the LLM, perception results must never wait on LLM generation, and LLM unavailability must never crash or terminate the WebSocket connection.
+- **Decision**:
+  - **Decoupled Service Boundary (`backend/app/services/llm_service.py`)**:
+    FastAPI interacts with `llama-server` strictly via `LLMService`. It uses `httpx.AsyncClient` with explicit connect (2.0s) and read timeouts, supporting both async token streaming (`stream=True`) and whole-response generation (`stream=False`).
+  - **Typed Failures & Lightweight Cool-down**:
+    All HTTP and network failures are wrapped in typed exceptions (`LLMUnavailable`, `LLMTimeout`, `LLMResponseError`, `LLMError`). After `LLM_FAILURE_THRESHOLD=3` consecutive failures, the service enters a `LLM_COOLDOWN_SECONDS=15.0` cooldown window, immediately short-circuiting downstream LLM requests and protecting system resources while keeping ASR/emotion fully operational.
+  - **Health Check Integration Without System Failure**:
+    `LLMService.check_health()` caches health probes for `LLM_HEALTH_CACHE_SECONDS=5.0`. In `backend/app/api/health.py`, if the LLM is down, its component status is marked as `"degraded"` or `"unhealthy"`, but the overall server status remains `"ok"` or `"degraded"`, never throwing a 500 error.
+  - **Prompt Builder Module (`backend/app/services/prompt_builder.py`)**:
+    Decoupled prompt engineering into a dedicated module that constructs system prompts conditioned on the user's detected emotion and spoken language. Employs a token-budget sliding window (budget=1024 tokens) that trims older history while preserving system prompt instructions.
+  - **Qwen3 Thinking Mode Disabling for Voice Latency**:
+    To minimize Time-To-First-Token (TTFT) for conversational voice, reasoning thinking mode is explicitly disabled in the request payload (`"chat_template_kwargs": {"enable_thinking": False}`). In addition, a streaming `ThinkingFilter` and regex cleaner strip any residual `<think>...</think>` tags before tokens reach the UI or downstream TTS.
+  - **Strict WebSocket Ordering**:
+    `speech_result` is emitted to the WebSocket client BEFORE `handle_llm_turn()` is invoked. If the LLM call succeeds, tokens stream via `llm_delta` followed by `llm_done`. If the LLM is unavailable or times out, an error event `{"type": "error", "code": "llm_unavailable"}` is emitted, and the socket remains open and responsive to subsequent speech and control frames.
+  - **Import Isolation Guarantee**:
+    An automated AST scan test (`tests/backend/test_isolation.py`) asserts that neither `ai/` nor `speech_service.py` imports `llm_service`.
+- **Consequences**:
+  - Complete operational decoupling: ASR and emotion services function perfectly even if the LLM server is terminated or crashes.
+  - Zero performance degradation on perception pipelines.
+  - Full adherence to the Phase 6 specification.

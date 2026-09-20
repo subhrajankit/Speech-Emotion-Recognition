@@ -2,6 +2,30 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 6 - Target Migration] - Qwen3 / LLM Service Integration (2026-09-20)
+- **Decoupled LLM Service Interface (`backend/app/services/llm_service.py`)**:
+  - Implemented `LLMService` communicating with local `llama-server` over HTTP using `httpx` with explicit timeouts.
+  - Implemented `generate(messages, *, emotion=None, language=None, stream=True, max_tokens=None, timeout=None)` supporting async token streaming and non-streaming modes.
+  - Typed exceptions: `LLMError`, `LLMUnavailable` (unreachable/5xx), `LLMTimeout`, and `LLMResponseError`.
+  - Circuit breaker / cool-down mechanism: trips into cooldown after `LLM_FAILURE_THRESHOLD=3` consecutive failures for `LLM_COOLDOWN_SECONDS=15.0`, short-circuiting doomed requests while keeping ASR/emotion alive.
+  - Cached health check (`check_health()`) with `LLM_HEALTH_CACHE_SECONDS=5.0`.
+  - Integrated into `/api/health` without failing overall system health when LLM is offline (`status: ok | degraded`).
+- **Prompt Builder Module (`backend/app/services/prompt_builder.py`)**:
+  - Clean separation of prompt construction: formats system prompt injecting detected emotion and spoken language, instructing the assistant to respond in the user's language and tone.
+  - Token budget sliding window: trims conversation history to fit within a configurable token budget (`max_history_tokens=1024`).
+- **Voice Latency Thinking Mode Filtering**:
+  - Request payload sets `"chat_template_kwargs": {"enable_thinking": False}` for low-latency voice responses.
+  - Streaming `ThinkingFilter` and non-streaming `strip_thinking_tags` regex parser strip `<think>...</think>` content even if split across chunk boundaries before reaching UI/TTS.
+- **Strict Ordering & Resilience in WebSocket (`backend/app/websocket/speech_socket.py`)**:
+  - `speech_result` event is guaranteed to be emitted BEFORE calling the LLM and never waits on it.
+  - LLM tokens stream via `llm_delta` followed by `llm_done`.
+  - On LLM failure/downtime, emits `{"type": "error", "code": "llm_unavailable", "message": ...}` and keeps the socket open for subsequent turns.
+- **Strict Architectural Import Isolation (`tests/backend/test_isolation.py`)**:
+  - Automated AST scan verifies that no file under `ai/` and no speech engine (`backend/app/services/speech_service.py`) imports or references `llm_service`.
+- **Testing & Fault Injection (`tests/backend/test_llm_service.py`, `tests/backend/test_websocket.py`)**:
+  - Comprehensive unit test suite with `httpx.MockTransport` simulating 503 errors, connect refusals, SSE token streams, thinking tag extraction, and cool-down resets.
+  - 33 backend tests + 46 AI tests passing (79 total passed, 2 skipped cleanly).
+
 ## [Phase 4 - Target Migration] - Hindi / Indic Language Routing & Unified SpeechEngine (2026-09-20)
 - **Standardized Language Router (`ai/routing/language_router.py`)**:
   - Implemented `RoutingDecision` schema: `{language, confidence, engine, source: "hint" | "detected" | "default"}`.

@@ -113,8 +113,14 @@ class SpeechService:
 
     def _get_semaphore(self) -> asyncio.Semaphore:
         """Lazily binds semaphore to the running event loop."""
-        if self._semaphore is None:
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+
+        if self._semaphore is None or getattr(self, "_sem_loop", None) != curr_loop:
             self._semaphore = asyncio.Semaphore(settings.INFERENCE_CONCURRENCY_LIMIT)
+            self._sem_loop = curr_loop
         return self._semaphore
 
     @property

@@ -4,7 +4,9 @@ Covers protocol v1 handshake, audio streaming, speech_result emission,
 keepalives, buffer limits, and authentication gating.
 """
 
+from pathlib import Path
 import numpy as np
+import soundfile as sf
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
@@ -183,3 +185,151 @@ def test_websocket_auth_required_accepted_with_token(client):
             assert pong.get("type") == "pong"
     finally:
         settings.AUTH_REQUIRED = False
+
+
+def test_websocket_speech_result_before_llm_and_error_keeps_socket_open(client, monkeypatch):
+    """
+    Requirement 5: Ordering guarantee and resilience.
+    The speech_result event MUST be sent BEFORE the LLM is called and never waits on it.
+    When the local LLM server is stopped/unreachable, an error with code='llm_unavailable'
+    is emitted, and the socket remains OPEN and functional.
+    Uses fault injection (503 Service Unavailable) to simulate a stopped llama-server.
+    """
+    import httpx
+    from backend.app.services.llm_service import llm_service
+
+    async def fail_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("Connection refused to 127.0.0.1:8080 (llama-server stopped)")
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(fail_handler))
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        ready_msg = ws.receive_json()
+        assert ready_msg.get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+            pcm_bytes = samples.tobytes()
+
+        chunk_size = 1024
+        for i in range(0, len(pcm_bytes), chunk_size):
+            ws.send_bytes(pcm_bytes[i : i + chunk_size])
+
+        ws.send_json({"type": "stop"})
+
+        events = []
+        # Receive until we see the speech_result and the subsequent LLM outcome
+        for _ in range(10):
+            try:
+                ev = ws.receive_json()
+                events.append(ev)
+                if ev.get("type") in ("error", "llm_done"):
+                    break
+            except Exception:
+                break
+
+        event_types = [e.get("type") for e in events]
+        assert "speech_result" in event_types
+
+        # Verify strict ordering: speech_result MUST appear before any llm event or error
+        speech_idx = event_types.index("speech_result")
+        assert "error" in event_types, f"Expected LLM error event, received: {event_types}"
+        err_idx = event_types.index("error")
+        assert speech_idx < err_idx, "speech_result must be emitted before LLM error"
+        err_event = events[err_idx]
+        assert err_event.get("code") == "llm_unavailable"
+
+        # Verify socket is STILL OPEN and responsive to subsequent traffic
+        ws.send_json({"type": "ping"})
+        pong = ws.receive_json()
+        assert pong.get("type") == "pong"
+
+
+def test_websocket_llm_streaming_success_ordering(client, monkeypatch):
+    """
+    Requirement 5: Stream llm_delta events and final llm_done after speech_result.
+    Uses fault-injection MockTransport to simulate real SSE streaming from llama.cpp.
+    """
+    import httpx
+    from backend.app.services.llm_service import llm_service
+
+    sse_chunks = [
+        b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":" from"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":" Qwen3!"}}]}\n\n',
+        b'data: [DONE]\n\n',
+    ]
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"".join(sse_chunks))
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_handler))
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        assert ws.receive_json().get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+            pcm_bytes = samples.tobytes()
+
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+
+        ws.send_json({"type": "stop"})
+
+        events = []
+        for _ in range(10):
+            try:
+                ev = ws.receive_json()
+                events.append(ev)
+                if ev.get("type") in ("llm_done", "error"):
+                    break
+            except Exception:
+                break
+
+        event_types = [e.get("type") for e in events]
+        assert "speech_result" in event_types
+        assert "llm_delta" in event_types
+        assert "llm_done" in event_types
+
+        # Strict ordering verification
+        speech_idx = event_types.index("speech_result")
+        first_delta_idx = event_types.index("llm_delta")
+        done_idx = event_types.index("llm_done")
+
+        assert speech_idx < first_delta_idx < done_idx
+
+        # Content verification
+        deltas = [e.get("delta") for e in events if e.get("type") == "llm_delta"]
+        assert "".join(deltas) == "Hello from Qwen3!"
+
+        done_event = events[done_idx]
+        assert done_event.get("text") == "Hello from Qwen3!"
+
+        # Socket still functional
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json().get("type") == "pong"

@@ -21,8 +21,10 @@ def test_health_check_structure(client):
     assert "emotion" in components
     assert components["emotion"] in ("ok", "degraded")
 
+    # Configured in Phase 6: LLM
+    assert components.get("llm") in ("ok", "degraded", "unhealthy")
+
     # Optional / not configured placeholders
-    assert components.get("llm") == "not_configured"
     assert components.get("rag") == "not_configured"
     assert components.get("tts") == "not_configured"
     assert components.get("db") == "not_configured"

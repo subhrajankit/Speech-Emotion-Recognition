@@ -6,13 +6,21 @@ non-blocking inference, per-connection buffer limits, keepalives, and auth gatin
 
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from ai.preprocessing.vad import SileroVAD, VADSpeechSegmenter
 from backend.app.core.config import settings
 from backend.app.core.security import verify_access_token, AuthenticationError
 from backend.app.services.speech_service import speech_service
+from backend.app.services.llm_service import (
+    llm_service,
+    LLMError,
+    LLMUnavailable,
+    LLMTimeout,
+    LLMResponseError,
+)
+from backend.app.services.prompt_builder import PromptBuilder
 
 logger = logging.getLogger("voicesense.websocket")
 
@@ -34,6 +42,75 @@ async def safe_send_json(websocket: WebSocket, data: Dict[str, Any]) -> bool:
         return True
     except (WebSocketDisconnect, RuntimeError):
         return False
+
+
+async def handle_llm_turn(
+    websocket: WebSocket,
+    transcript: str,
+    emotion: Optional[str],
+    language: Optional[str],
+    conversation_history: List[Dict[str, str]],
+):
+    """
+    Invokes LLM reasoning strictly AFTER speech_result has been sent.
+    Streams llm_delta tokens and emits llm_done upon completion.
+    On failure, emits {"type": "error", "code": "llm_unavailable", "message": ...}
+    and keeps the socket open.
+    """
+    transcript_clean = transcript.strip() if transcript else ""
+    if not transcript_clean:
+        return
+
+    messages = PromptBuilder.build_chat_messages(
+        transcript=transcript_clean,
+        conversation_history=conversation_history,
+        emotion=emotion,
+        language=language,
+    )
+
+    full_response_parts: List[str] = []
+    try:
+        stream = await llm_service.generate(
+            messages=messages,
+            emotion=emotion,
+            language=language,
+            stream=True,
+        )
+        async for delta in stream:
+            if delta:
+                full_response_parts.append(delta)
+                sent = await safe_send_json(websocket, {
+                    "type": "llm_delta",
+                    "delta": delta,
+                })
+                if not sent:
+                    return
+
+        full_text = "".join(full_response_parts).strip()
+        await safe_send_json(websocket, {
+            "type": "llm_done",
+            "text": full_text,
+        })
+
+        # Update in-memory conversation history
+        conversation_history.append({"role": "user", "content": transcript_clean})
+        if full_text:
+            conversation_history.append({"role": "assistant", "content": full_text})
+
+    except (LLMUnavailable, LLMTimeout, LLMResponseError, LLMError) as e:
+        logger.warning(f"LLM generation failed: {e}")
+        await safe_send_json(websocket, {
+            "type": "error",
+            "code": "llm_unavailable",
+            "message": str(e),
+        })
+    except Exception as e:
+        logger.error(f"Unexpected error in LLM turn: {e}")
+        await safe_send_json(websocket, {
+            "type": "error",
+            "code": "llm_unavailable",
+            "message": f"LLM error: {e}",
+        })
 
 
 @router.websocket("/ws/speech")
@@ -76,6 +153,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     sample_rate = 16000
     encoding = "pcm_s16le"
     language_hint: Optional[str] = None
+    conversation_history: List[Dict[str, str]] = []
 
     vad = SileroVAD(threshold=settings.VAD_THRESHOLD, mock=settings.MOCK_MODELS)
     segmenter = VADSpeechSegmenter(
@@ -152,6 +230,13 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                                 "type": "speech_result",
                                 **speech_res.model_dump()
                             })
+                            await handle_llm_turn(
+                                websocket=websocket,
+                                transcript=speech_res.transcript,
+                                emotion=speech_res.emotion,
+                                language=speech_res.language,
+                                conversation_history=conversation_history,
+                            )
                         except Exception as e:
                             logger.error(f"Inference error during stop flush: {e}")
                             await safe_send_json(websocket, {
@@ -228,6 +313,13 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             "type": "speech_result",
                             **speech_res.model_dump()
                         })
+                        await handle_llm_turn(
+                            websocket=websocket,
+                            transcript=speech_res.transcript,
+                            emotion=speech_res.emotion,
+                            language=speech_res.language,
+                            conversation_history=conversation_history,
+                        )
                     except Exception as e:
                         logger.error(f"Inference error on completed utterance: {e}")
                         await websocket.send_json({
