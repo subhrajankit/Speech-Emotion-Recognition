@@ -2,6 +2,29 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 2 - Target Migration] - Clean FastAPI Boundaries & Real-Time WebSocket (2026-09-20)
+- **Modular Backend Architecture (`backend/app/`)**:
+  - Application factory in `backend/app/main.py` with FastAPI lifespan model loading.
+  - Configuration via `pydantic-settings` in `backend/app/core/config.py` with CORS origins from environment and strict privacy logging.
+  - Core logging in `backend/app/core/logging.py` ensuring transcripts and audio bytes are never logged at INFO level.
+  - Re-homed HMAC-SHA256 JWT auth in `backend/app/core/security.py` and `backend/app/api/auth.py`.
+- **Non-Blocking Speech Service (`backend/app/services/speech_service.py`)**:
+  - Encapsulates `ai/` speech engine (`SenseVoiceSpeechEngine`).
+  - Offloads CPU/GPU synchronous inference from asyncio event loop to worker threads (`asyncio.to_thread`) bounded by `asyncio.Semaphore(settings.INFERENCE_CONCURRENCY_LIMIT)`.
+  - In-memory audio decoding with zero audio persistence to disk.
+- **REST Endpoints (`backend/app/api/`)**:
+  - `GET /api/health`: Per-component readiness for ASR and emotion, placeholders for LLM, RAG, TTS, DB as `"not_configured"`. Responds in <10ms even during active heavy inference.
+  - `POST /api/speech/upload`: Validates multipart audio, enforces 10MB size limit and content-type checks, and returns `SpeechResult`.
+  - `POST /api/predict`: Shares upload service pipeline, returning `PredictionResponse(SpeechResult)` with optional downstream `assistant` block.
+- **WebSocket Protocol v1 (`backend/app/websocket/speech_socket.py`, `docs/api/websocket.md`)**:
+  - Full streaming protocol: `start` -> `ready` -> binary PCM16 audio -> `speech_result` -> `stop`.
+  - Server-side VAD state transitions (`speech_start`, `speech_end`).
+  - Keepalive ping/pong, per-connection 5MB buffer limit, and auth gating (`AUTH_REQUIRED`).
+  - Safe ignoring of unknown and reserved message types (`llm_delta`, `llm_done`, `tts_chunk`, `tts_done`, `status`).
+- **Test Client & Verification Suite (`scripts/ws_client.py`, `tests/backend/`)**:
+  - Standalone `scripts/ws_client.py` streaming audio chunks and printing ordered server events.
+  - 18 automated tests in `tests/backend/` covering health, upload validation, predict semantics, and full WebSocket sequences. All 50 tests pass.
+
 ## [Phase 1 - Target Migration] - Stable Base Speech Pipeline (2026-09-20)
 - **Standalone Audio Preprocessing (`ai/preprocessing/audio.py`)**:
   - Implemented `load_and_preprocess_audio`, `to_mono`, `resample_audio`, `normalize_audio`, and `decode_audio`.

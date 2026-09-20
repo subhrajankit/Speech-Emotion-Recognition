@@ -337,3 +337,16 @@
   - Zero mock contamination in production code paths.
   - Clean foundation ready for IndicConformer integration in Phase 4.
 
+## ADR 023: Non-Blocking Speech Service & WebSocket v1 Protocol (Phase 2 Migration)
+- **Context**: Wrapping the Phase 1 speech engine in FastAPI required establishing clean architectural boundaries, ensuring that synchronous compute-heavy neural inference never blocks the asyncio event loop or degrades concurrent health checks, providing unified upload and predict endpoints without duplicated logic, and specifying a robust v1 WebSocket streaming protocol.
+- **Decision**:
+  - **Threadpool Offloading & Bounded Concurrency**: Synchronous ASR inference is dispatched off the event loop via `asyncio.to_thread` wrapped in `asyncio.Semaphore(settings.INFERENCE_CONCURRENCY_LIMIT)`. Health checks (`/api/health`) and keepalives remain fully responsive with <10ms latency even during active multi-second speech perception runs.
+  - **Shared Service Pipeline for Upload and Predict**: `POST /api/speech/upload` and `POST /api/predict` invoke the exact same `speech_service.transcribe_audio_bytes()` in-memory decoding pipeline. `POST /api/predict` returns `PredictionResponse(SpeechResult)`, appending an optional `assistant` block (`None` in Phase 2) for downstream LLM phases without duplicating validation or inference code.
+  - **WebSocket Protocol v1 Specification**: Enforced client-server sequencing (`start` -> `ready` -> binary PCM16 -> `speech_result` -> `stop`), server-side Silero VAD state events (`speech_start`, `speech_end`), and per-connection 5MB audio buffer limits (`WS_MAX_BUFFER_BYTES`). Safely ignores reserved downstream message frames (`llm_delta`, `tts_chunk`, etc.) without connection termination.
+  - **In-Memory Audio Ephemerality**: All audio processing occurs strictly in memory (`BytesIO` and NumPy buffers) with zero audio persistence to disk.
+- **Consequences**:
+  - Reliable, non-blocking asynchronous server performance.
+  - Consistent API contracts and standardized error schemas across all REST and WebSocket boundaries.
+  - Clean isolation: system operates completely standalone with zero dependencies on LLM, RAG, TTS, or database.
+
+

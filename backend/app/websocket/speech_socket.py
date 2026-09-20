@@ -1,0 +1,245 @@
+"""
+WebSocket speech streaming endpoint for VoiceSense AI.
+Implements WebSocket protocol v1 with server-side VAD segmentation,
+non-blocking inference, per-connection buffer limits, keepalives, and auth gating.
+"""
+
+import json
+import logging
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+
+from ai.preprocessing.vad import SileroVAD, VADSpeechSegmenter
+from backend.app.core.config import settings
+from backend.app.core.security import verify_access_token, AuthenticationError
+from backend.app.services.speech_service import speech_service
+
+logger = logging.getLogger("voicesense.websocket")
+
+router = APIRouter(tags=["websocket"])
+
+RESERVED_MESSAGE_TYPES = {
+    "llm_delta",
+    "llm_done",
+    "tts_chunk",
+    "tts_done",
+    "status",
+}
+
+
+async def safe_send_json(websocket: WebSocket, data: Dict[str, Any]) -> bool:
+    """Sends JSON to client safely, suppressing disconnect exceptions."""
+    try:
+        await websocket.send_json(data)
+        return True
+    except (WebSocketDisconnect, RuntimeError):
+        return False
+
+
+@router.websocket("/ws/speech")
+async def speech_websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket voice endpoint:
+    Client -> server:
+      {"type":"start","sample_rate":16000,"encoding":"pcm_s16le","language_hint":null}
+      binary frames of PCM16 mono audio
+      {"type":"stop"}
+    Server -> client:
+      {"type":"ready"}
+      {"type":"vad","state":"speech_start"|"speech_end"}
+      {"type":"speech_result", ...SpeechResult}
+      {"type":"error","code":"...","message":"..."}
+    """
+    # 1. Auth gating if AUTH_REQUIRED is enabled
+    if settings.AUTH_REQUIRED:
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Authentication required: missing token query parameter"
+            )
+            return
+
+        try:
+            verify_access_token(token)
+        except AuthenticationError as e:
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason=f"Authentication failed: {e}"
+            )
+            return
+
+    await websocket.accept()
+
+    # Per-connection session state
+    is_started = False
+    sample_rate = 16000
+    encoding = "pcm_s16le"
+    language_hint: Optional[str] = None
+
+    vad = SileroVAD(threshold=settings.VAD_THRESHOLD, mock=settings.MOCK_MODELS)
+    segmenter = VADSpeechSegmenter(
+        vad=vad,
+        silence_timeout_ms=700,
+        speech_threshold=settings.VAD_THRESHOLD,
+        sample_rate=sample_rate,
+        pre_padding_ms=250
+    )
+
+    total_accumulated_bytes = 0
+    was_in_speech = False
+
+    try:
+        while True:
+            message = await websocket.receive()
+            msg_type = message.get("type")
+
+            # Handle text JSON control messages
+            if "text" in message and message["text"]:
+                try:
+                    payload = json.loads(message["text"])
+                except json.JSONDecodeError:
+                    await websocket.send_json({
+                        "type": "error",
+                        "code": "INVALID_JSON",
+                        "message": "Malformed JSON payload"
+                    })
+                    continue
+
+                action = payload.get("type")
+
+                # Keepalive ping
+                if action == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
+
+                # Start streaming session
+                if action == "start":
+                    sample_rate = int(payload.get("sample_rate", 16000))
+                    encoding = payload.get("encoding", "pcm_s16le")
+                    language_hint = payload.get("language_hint")
+
+                    segmenter.sample_rate = sample_rate
+                    segmenter.reset()
+                    total_accumulated_bytes = 0
+                    is_started = True
+                    was_in_speech = False
+
+                    await websocket.send_json({"type": "ready"})
+                    continue
+
+                # Stop streaming session / flush current speech
+                if action == "stop":
+                    if not is_started:
+                        continue
+
+                    flushed_audio = segmenter.flush()
+                    if was_in_speech:
+                        await safe_send_json(websocket, {
+                            "type": "vad",
+                            "state": "speech_end"
+                        })
+                        was_in_speech = False
+
+                    if flushed_audio and len(flushed_audio) >= 1024:
+                        try:
+                            speech_res = await speech_service.transcribe_pcm16_bytes(
+                                pcm_bytes=flushed_audio,
+                                sample_rate=sample_rate,
+                                language_hint=language_hint
+                            )
+                            await safe_send_json(websocket, {
+                                "type": "speech_result",
+                                **speech_res.model_dump()
+                            })
+                        except Exception as e:
+                            logger.error(f"Inference error during stop flush: {e}")
+                            await safe_send_json(websocket, {
+                                "type": "error",
+                                "code": "INFERENCE_ERROR",
+                                "message": str(e)
+                            })
+
+                    is_started = False
+                    total_accumulated_bytes = 0
+                    continue
+
+                # Ignore reserved or unknown control message types safely
+                if action in RESERVED_MESSAGE_TYPES or action is not None:
+                    logger.debug(f"Ignoring message type: '{action}'")
+                    continue
+
+            # Handle binary PCM16 audio frames
+            elif "bytes" in message and message["bytes"]:
+                chunk = message["bytes"]
+
+                if not is_started:
+                    # Auto-start or request start frame
+                    await websocket.send_json({
+                        "type": "error",
+                        "code": "NOT_STARTED",
+                        "message": "Stream must be initiated with a 'start' control frame before sending audio"
+                    })
+                    continue
+
+                # Enforce per-connection buffer limits
+                total_accumulated_bytes += len(chunk)
+                if total_accumulated_bytes > settings.WS_MAX_BUFFER_BYTES:
+                    await websocket.send_json({
+                        "type": "error",
+                        "code": "BUFFER_OVERFLOW",
+                        "message": f"Connection buffer limit ({settings.WS_MAX_BUFFER_BYTES} bytes) exceeded."
+                    })
+                    segmenter.reset()
+                    total_accumulated_bytes = 0
+                    was_in_speech = False
+                    continue
+
+                # Process chunk through VAD segmenter
+                completed_utterance = segmenter.process_chunk(chunk)
+
+                # Emit VAD state transitions
+                if segmenter.in_speech and not was_in_speech:
+                    was_in_speech = True
+                    await websocket.send_json({
+                        "type": "vad",
+                        "state": "speech_start"
+                    })
+
+                if completed_utterance is not None:
+                    # Silence timeout reached: speech ended
+                    if was_in_speech:
+                        await websocket.send_json({
+                            "type": "vad",
+                            "state": "speech_end"
+                        })
+                        was_in_speech = False
+
+                    total_accumulated_bytes = 0
+
+                    # Run inference off the event loop
+                    try:
+                        speech_res = await speech_service.transcribe_pcm16_bytes(
+                            pcm_bytes=completed_utterance,
+                            sample_rate=sample_rate,
+                            language_hint=language_hint
+                        )
+                        await websocket.send_json({
+                            "type": "speech_result",
+                            **speech_res.model_dump()
+                        })
+                    except Exception as e:
+                        logger.error(f"Inference error on completed utterance: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "code": "INFERENCE_ERROR",
+                            "message": str(e)
+                        })
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected cleanly.")
+    except Exception as e:
+        logger.error(f"Unexpected WebSocket error: {e}")
+    finally:
+        # Clean up per-connection state
+        segmenter.reset()
