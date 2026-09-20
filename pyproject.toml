@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voicesense"
+version = "0.1.0"
+description = "Multilingual, emotion-aware, fully local voice assistant"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.0",
+    "soundfile>=0.12.1",
+    "onnxruntime>=1.17.0",
+    "pydantic>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+models = [
+    "torch>=2.2.0",
+    "torchaudio>=2.2.0",
+    "funasr>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "model: marks tests that require full model weights or heavy deep learning dependencies",
+    "unit: marks fast unit tests",
+    "integration: marks multi-component integration tests",
+]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

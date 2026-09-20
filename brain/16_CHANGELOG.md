@@ -2,6 +2,30 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 1 - Target Migration] - Stable Base Speech Pipeline (2026-09-20)
+- **Standalone Audio Preprocessing (`ai/preprocessing/audio.py`)**:
+  - Implemented `load_and_preprocess_audio`, `to_mono`, `resample_audio`, `normalize_audio`, and `decode_audio`.
+  - Supports file paths, raw PCM bytes, containerized audio (WAV, FLAC, OGG), and NumPy arrays.
+  - Safe 0-byte file handling returning empty arrays with zero exceptions.
+  - Linear fractional resampling to 16 kHz and peak normalization to `[-1.0, 1.0]`.
+- **Silero VAD Isolation & Gating (`ai/preprocessing/vad.py`)**:
+  - Refactored `SileroVAD` ONNX engine and `VADSpeechSegmenter` with configurable thresholds and durations (`SILERO_VAD_THRESHOLD`, `min_speech_duration_ms`).
+  - Added `VADResult` dataclass and `analyze()` method guaranteeing explicit no-speech results for empty, silent, or sub-second audio.
+  - Retained backward compatibility forwarder in `src/backend/audio/vad.py`.
+- **Unified Speech Schema & Interface (`ai/inference/types.py`, `engine.py`)**:
+  - Defined Pydantic `SpeechResult` with `transcript`, `language`, `emotion`, `confidence` (`None` by default per uncalibrated probability policy), `processing_time_ms`, and `model_version`.
+  - Zero model-specific keys in root schema.
+  - Implemented `SpeechEngine` abstract protocol.
+- **SenseVoice Inference Engine & CLI (`ai/inference/sensevoice.py`)**:
+  - Implemented `SenseVoiceSpeechEngine` with rich tag parsing for language (`zh`, `en`, `yue`, `ja`, `ko`), emotion (`happy`, `sad`, `angry`, `neutral`, `fearful`, `disgusted`, `surprised`), and AED events (`BGM`, `Speech`, `Applause`, etc.).
+  - Standalone CLI: `python -m ai.inference.sensevoice <file.wav>` outputting schema-compliant JSON.
+  - Actionable error naming expected path if weights/dependencies are missing; `--mock` flag for dry-run/mock verification.
+- **Packaging & Verification (`pyproject.toml`, `tests/ai/`)**:
+  - Added root `pyproject.toml` registering `ai` package and pytest markers.
+  - Created 33 new automated tests in `tests/ai/` (32 passed, 1 model test cleanly skipped when weights are absent).
+  - All 80 existing unit tests in `tests/unit/` continue to pass.
+  - Benchmark: Silero VAD cold start 343 ms; warm inference on 6s audio is 55.0 ms (RTF 0.0092, 108x faster than real-time).
+
 ## [Phase 17] - Optional Cloud Fallback (Gemini 3 Flash) alongside Local Qwen3 (2026-09-14)
 - **Optional Gemini 3 Flash Cloud LLM Client**:
   - Implemented `GeminiClient` in `src/backend/llm/gemini.py` calling Google Gemini API (`gemini-2.5-flash` / Gemini 3 Flash) via asynchronous HTTP Server-Sent Events (SSE).

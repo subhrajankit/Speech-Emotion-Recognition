@@ -7,7 +7,20 @@ or lingering singleton state.
 """
 
 import math
+import os
 import struct
+import sys
+from pathlib import Path
+
+# Ensure repo root is at the head of sys.path, and tests dir does not shadow root packages
+_repo_root = str(Path(__file__).parent.parent.resolve())
+_tests_dir = str(Path(__file__).parent.resolve())
+while _tests_dir in sys.path:
+    sys.path.remove(_tests_dir)
+while _repo_root in sys.path:
+    sys.path.remove(_repo_root)
+sys.path.insert(0, _repo_root)
+
 import pytest
 from typing import Generator
 

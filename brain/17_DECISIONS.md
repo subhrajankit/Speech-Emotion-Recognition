@@ -320,3 +320,20 @@
   - Drops TTFT for greetings and common conversational queries by over 80%.
   - Speech synthesis begins immediately on the first conversational sentence chunk without reasoning preamble.
   - Can be cleanly re-enabled via environment variable or per-request parameter when complex multi-step reasoning is demanded.
+
+## ADR 022: Unified Speech Perception Architecture & Truthful Confidence Policy (Phase 1 Migration)
+- **Context**: Migrating to the target architecture (`ai/preprocessing/`, `ai/inference/`) required decoupling speech perception from backend endpoints, establishing a model-independent schema, and handling confidence reporting truthfully without fabricated metrics.
+- **Decision**:
+  - **Calibrated Confidence Policy (`confidence = None`)**:
+    SenseVoiceSmall rich transcription emits greedy discrete token predictions via CTC and does not provide calibrated posterior probabilities for emotion or language. In strict accordance with the Truthfulness rule ("never invent a number"), `SpeechResult.confidence` is set to `None` by default rather than fabricating an artificial number (such as fixed 0.85).
+  - **VAD-Gated Short Circuiting**:
+    Silero VAD v5 ONNX is placed as an active pre-inference gate in `SenseVoiceSpeechEngine.transcribe()`. Empty, silent, or sub-second audio clips return an explicit well-formed `SpeechResult` with `transcript=""`, `language="unknown"`, `emotion=None`, and `vad_has_speech=False`, incurring zero neural ASR compute or model loading overhead.
+  - **Single Unified Schema (`SpeechResult`)**:
+    Standardized on Pydantic `SpeechResult` with zero model-specific keys in the root schema (`transcript`, `language`, `emotion`, `confidence`, `processing_time_ms`, `model_version`). Rich tags are cleanly parsed and segregated into standard optional extras (`audio_events`, `debug`).
+  - **Graceful Weight Degradation & Explicit Errors**:
+    When model weights or deep learning libraries (`funasr`, `torch`) are not present on the host, the engine fails with a clear, actionable `RuntimeError` naming the expected path. Tests requiring model weights are decorated with `@pytest.mark.model` and skip cleanly. A `--mock` CLI flag is supported strictly for offline dry-run testing.
+- **Consequences**:
+  - ASR and emotion classification can run 100% standalone with zero dependency on LLM, RAG, TTS, or database.
+  - Zero mock contamination in production code paths.
+  - Clean foundation ready for IndicConformer integration in Phase 4.
+
