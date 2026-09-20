@@ -17,6 +17,11 @@ def __getattr__(name: str):
     ):
         import ai.inference.sensevoice as _sv
         return getattr(_sv, name)
+    if name in (
+        "IndicConformerSpeechEngine",
+    ):
+        import ai.inference.indicconformer as _ic
+        return getattr(_ic, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -24,6 +29,7 @@ __all__ = [
     "SpeechResult",
     "SpeechEngine",
     "SenseVoiceSpeechEngine",
+    "IndicConformerSpeechEngine",
     "parse_sensevoice_output",
     "SENSEVOICE_LANG_TAGS",
     "SENSEVOICE_EMO_TAGS",

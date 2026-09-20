@@ -66,6 +66,49 @@ def test_websocket_start_audio_stop_sequence(client):
         assert "processing_time_ms" in speech_result
 
 
+def test_websocket_hindi_language_hint_returns_emotion_none(client):
+    """
+    Verifies WebSocket session configured with language_hint='hi'
+    routes to IndicConformer and returns emotion=None (null).
+    """
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "hi"
+        })
+        ready_event = ws.receive_json()
+        assert ready_event.get("type") == "ready"
+
+        # Send 1.0s of audible synthetic speech-like signal
+        t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+        samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+        pcm_bytes = samples.tobytes()
+
+        chunk_size = 1024
+        for i in range(0, len(pcm_bytes), chunk_size):
+            ws.send_bytes(pcm_bytes[i : i + chunk_size])
+
+        ws.send_json({"type": "stop"})
+
+        speech_result = None
+        for _ in range(5):
+            try:
+                event = ws.receive_json()
+                if event.get("type") == "speech_result":
+                    speech_result = event
+                    break
+            except Exception:
+                break
+
+        assert speech_result is not None
+        assert speech_result["language"] == "hi"
+        assert speech_result["emotion"] is None
+        assert speech_result["debug"]["routing"]["engine"] == "indicconformer"
+        assert speech_result["debug"]["routing"]["source"] == "hint"
+
+
 def test_websocket_keepalive_ping_pong(client):
     """Verifies ping -> pong keepalive."""
     with client.websocket_connect("/ws/speech") as ws:

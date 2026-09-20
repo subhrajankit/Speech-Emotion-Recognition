@@ -1,7 +1,8 @@
 """
-Speech service wrapping the Phase 1 perception engine (SenseVoiceSmall).
+Speech service wrapping perception engines (SenseVoiceSmall and IndicConformer-600m).
 Handles:
-- Singleton lifecycle (loads once at startup)
+- Singleton lifecycle (loads once at application startup)
+- Dynamic language routing via LanguageRouter
 - Threadpool execution with bounded concurrency limit
 - In-memory decoding with zero disk persistence
 - Component health reporting
@@ -13,7 +14,10 @@ from typing import Optional, Dict, Any
 import numpy as np
 
 from ai.inference.types import SpeechResult
+from ai.inference.engine import SpeechEngine
 from ai.inference.sensevoice import SenseVoiceSpeechEngine
+from ai.inference.indicconformer import IndicConformerSpeechEngine
+from ai.routing.language_router import LanguageRouter, RoutingDecision
 from ai.preprocessing.audio import load_and_preprocess_audio
 from backend.app.core.config import settings
 
@@ -22,26 +26,33 @@ logger = logging.getLogger("voicesense.speech_service")
 
 class SpeechService:
     """
-    Manages speech perception inference with bounded concurrency and non-blocking execution.
+    Manages speech perception inference with bounded concurrency,
+    dynamic language routing, and non-blocking execution.
     """
 
     def __init__(self):
-        self._engine: Optional[SenseVoiceSpeechEngine] = None
+        self._sensevoice: Optional[SenseVoiceSpeechEngine] = None
+        self._indicconformer: Optional[IndicConformerSpeechEngine] = None
+        self._router: Optional[LanguageRouter] = None
+        self._engine: Optional[SpeechEngine] = None  # Default engine alias
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._is_initialized: bool = False
         self._init_error: Optional[str] = None
+        self._indic_init_error: Optional[str] = None
 
     def initialize(self) -> None:
         """
-        Loads the speech engine once during application lifespan startup.
+        Loads the speech engines and language router once during application lifespan startup.
         Never called per-request.
         """
         if self._is_initialized and self._engine is not None:
             return
 
         logger.info(f"Initializing SpeechService (mock={settings.MOCK_MODELS})...")
+
+        # 1. Initialize SenseVoiceSmall (Global ASR + SER)
         try:
-            self._engine = SenseVoiceSpeechEngine(
+            self._sensevoice = SenseVoiceSpeechEngine(
                 model_dir=settings.SENSEVOICE_MODEL_DIR,
                 device=settings.SENSEVOICE_DEVICE,
                 threads=settings.SENSEVOICE_THREADS,
@@ -49,14 +60,12 @@ class SpeechService:
                 mock=settings.MOCK_MODELS,
                 auto_load=not settings.MOCK_MODELS,
             )
-            self._is_initialized = True
             self._init_error = None
-            logger.info("SpeechService initialized successfully.")
+            logger.info("SenseVoice engine initialized successfully.")
         except Exception as e:
             logger.warning(f"Failed to initialize real SenseVoice model ({e}). Falling back to mock engine.")
             self._init_error = str(e)
-            # Fallback to mock so the application can start degraded rather than crashing
-            self._engine = SenseVoiceSpeechEngine(
+            self._sensevoice = SenseVoiceSpeechEngine(
                 model_dir=settings.SENSEVOICE_MODEL_DIR,
                 device=settings.SENSEVOICE_DEVICE,
                 threads=settings.SENSEVOICE_THREADS,
@@ -64,7 +73,43 @@ class SpeechService:
                 mock=True,
                 auto_load=False,
             )
-            self._is_initialized = True
+
+        # 2. Initialize IndicConformer-600m (Indic ASR)
+        try:
+            self._indicconformer = IndicConformerSpeechEngine(
+                model_dir=settings.INDICCONFORMER_MODEL_DIR,
+                device=settings.INDICCONFORMER_DEVICE,
+                decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
+                vad_threshold=settings.VAD_THRESHOLD,
+                mock=settings.MOCK_MODELS,
+                auto_load=not settings.MOCK_MODELS,
+            )
+            self._indic_init_error = None
+            logger.info("IndicConformer engine initialized successfully.")
+        except Exception as e:
+            logger.warning(f"Failed to initialize real IndicConformer model ({e}). Falling back to mock engine.")
+            self._indic_init_error = str(e)
+            self._indicconformer = IndicConformerSpeechEngine(
+                model_dir=settings.INDICCONFORMER_MODEL_DIR,
+                device=settings.INDICCONFORMER_DEVICE,
+                decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
+                vad_threshold=settings.VAD_THRESHOLD,
+                mock=True,
+                auto_load=False,
+            )
+
+        # Default engine reference
+        self._engine = self._sensevoice
+
+        # 3. Initialize LanguageRouter
+        self._router = LanguageRouter(
+            default_engine="sensevoice",
+            default_language="en",
+            lid_confidence_threshold=settings.LID_CONFIDENCE_THRESHOLD,
+        )
+
+        self._is_initialized = True
+        logger.info("SpeechService initialized with unified language routing.")
 
     def _get_semaphore(self) -> asyncio.Semaphore:
         """Lazily binds semaphore to the running event loop."""
@@ -74,7 +119,19 @@ class SpeechService:
 
     @property
     def is_ready(self) -> bool:
-        return self._is_initialized and self._engine is not None
+        return self._is_initialized and self._sensevoice is not None
+
+    @property
+    def router(self) -> Optional[LanguageRouter]:
+        return self._router
+
+    @property
+    def indicconformer(self) -> Optional[IndicConformerSpeechEngine]:
+        return self._indicconformer
+
+    @property
+    def sensevoice(self) -> Optional[SenseVoiceSpeechEngine]:
+        return self._sensevoice
 
     async def transcribe_array(
         self,
@@ -83,19 +140,47 @@ class SpeechService:
         language_hint: Optional[str] = None
     ) -> SpeechResult:
         """
-        Runs inference off the event loop via threadpool with bounded concurrency.
+        Runs language routing and inference off the event loop via threadpool
+        with bounded concurrency.
         """
         if not self.is_ready:
             raise RuntimeError("SpeechService is not initialized.")
 
-        sem = self._get_semaphore()
-        async with sem:
-            result = await asyncio.to_thread(
-                self._engine.transcribe,
+        # 1. Determine routing decision
+        if self._router is not None:
+            decision: RoutingDecision = self._router.route(
                 audio=audio,
                 sample_rate=sample_rate,
                 language_hint=language_hint
             )
+        else:
+            decision = RoutingDecision(
+                language=language_hint or "en",
+                confidence=None,
+                engine="sensevoice",
+                source="default",
+                debug={"policy": "no_router_fallback"}
+            )
+
+        # 2. Select speech engine according to routing decision
+        if decision.engine == "indicconformer" and self._indicconformer is not None:
+            selected_engine: SpeechEngine = self._indicconformer
+        else:
+            selected_engine = self._sensevoice or self._engine
+
+        sem = self._get_semaphore()
+        async with sem:
+            result = await asyncio.to_thread(
+                selected_engine.transcribe,
+                audio=audio,
+                sample_rate=sample_rate,
+                language_hint=decision.language
+            )
+
+            # Enrich result debug payload with routing telemetry
+            if result.debug is not None:
+                result.debug["routing"] = decision.model_dump()
+
             return result
 
     async def transcribe_audio_bytes(
@@ -157,10 +242,11 @@ class SpeechService:
         Placeholders for llm, rag, tts, db are 'not_configured'.
         Overall status is 'ok' or 'degraded'; does not fail for optional components.
         """
-        is_mock = self._engine.mock if self._engine else False
-        is_error = self._init_error is not None
+        sv_mock = self._sensevoice.mock if self._sensevoice else False
+        ic_mock = self._indicconformer.mock if self._indicconformer else False
+        is_error = (self._init_error is not None) or (self._indic_init_error is not None)
 
-        if self.is_ready and not is_error and not is_mock:
+        if self.is_ready and not is_error and not sv_mock and not ic_mock:
             asr_status = "ok"
             emotion_status = "ok"
             overall_status = "ok"
@@ -183,11 +269,14 @@ class SpeechService:
         }
 
         details = {
-            "model_version": self._engine.model_version if self._engine else "none",
+            "model_version": self._sensevoice.model_version if self._sensevoice else "none",
+            "indic_model_version": self._indicconformer.model_version if self._indicconformer else "none",
             "concurrency_limit": settings.INFERENCE_CONCURRENCY_LIMIT,
         }
         if self._init_error:
-            details["asr_init_warning"] = self._init_error
+            details["sensevoice_init_warning"] = self._init_error
+        if self._indic_init_error:
+            details["indicconformer_init_warning"] = self._indic_init_error
 
         return {
             "status": overall_status,

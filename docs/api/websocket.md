@@ -33,7 +33,10 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    ```
    - `sample_rate`: Sample rate in Hz (default: `16000`).
    - `encoding`: Audio encoding format. Currently supported: `"pcm_s16le"` (16-bit signed integer, linear PCM, little-endian, mono).
-   - `language_hint`: Optional ISO 639-1 code hint (e.g. `"en"`, `"zh"`, `"ja"`) or `null`.
+   - `language_hint`: Optional ISO 639-1 language code hint or `null`:
+     - Indic languages (`"hi"`, `"bn"`, `"mr"`, `"ta"`, `"te"`, etc.): routes dynamically to IndicConformer-600m.
+     - Global languages (`"en"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`): routes dynamically to SenseVoiceSmall.
+     - When `null`: routes according to Spoken LID detection (if confidence $\ge$ threshold) or falls back to SenseVoice default.
 
 2. **Binary Audio Frames**:
    Continuous binary chunks of raw PCM16 mono audio (e.g. 512 samples / 1024 bytes per chunk at 16kHz).

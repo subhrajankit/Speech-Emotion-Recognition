@@ -357,5 +357,27 @@
   - Decoupled from backend completion of future LLM/TTS phases.
   - 100% testable pure functions with Vitest and ESLint enforcement.
 
+## ADR 025: Dual-ASR Language Routing Policy, Indic Emotion Isolation, and Pluggable LID (Phase 4 Migration)
+- **Context**: Routing speech between SenseVoiceSmall (global languages) and IndicConformer-600m (Hindi and 21 Indic languages) required a deterministic precedence policy, preventing duplicate speech pipelines, establishing strict emotion isolation for Indic speech, and defining an evaluation strategy for Spoken Language Identification (LID).
+- **Decision**:
+  - **3-Tier Language Routing Precedence Policy**:
+    Implemented in `ai/routing/language_router.py`:
+    1. Tier 1 (Highest): Explicit client `language_hint` always wins. If Indic, routes to `indicconformer`; if global, routes to `sensevoice`.
+    2. Tier 2 (Medium): Spoken LID evaluates audio if hint is omitted. If confidence $\ge$ `LID_CONFIDENCE_THRESHOLD` (0.60), routes to the detected engine.
+    3. Tier 3 (Lowest / Fallback): Falls back to default engine (`sensevoice` / English).
+  - **Single Pipeline in `SpeechService`**:
+    Both ASR engines and the `LanguageRouter` are managed exclusively by `SpeechService` in `backend/app/services/speech_service.py`. No secondary pipeline, parallel service, or duplicate routing logic is created.
+  - **Strict Emotion Invariant for Indic Audio (`emotion = None`)**:
+    IndicConformer is an ASR model only. SenseVoice's emotion head is **never** run on Hindi audio. Indic results return `emotion = None` and `emotion_scores = None`. A clean hook (`apply_emotion_hook`) is provided for Phase 5 to attach dedicated Hindi SER without coupling to ASR.
+  - **LID Candidate Evaluation & No Automatic Downloads**:
+    Evaluated SpeechBrain VoxLingua107, Meta MMS-LID, and OpenAI Whisper head. Recommended VoxLingua107 for native PyTorch and Whisper-tiny for ONNX. Enforced safety rule: zero model weights downloaded without explicit confirmation. Pluggable `LanguageIdentifier` protocol allows testing decision logic with injected hand-written LID outputs.
+  - **Code-Mixed Speech (Hinglish) as Known Limitation**:
+    Formally documented in `docs/architecture/language-routing.md` that conversational Hinglish is an unmeasured known limitation until empirical benchmarks are established.
+- **Consequences**:
+  - Deterministic, testable language routing with zero neural model overhead in unit tests.
+  - Single pipeline invariant fully maintained.
+  - Complete isolation between Hindi ASR and future Phase 5 Hindi emotion recognition.
+
+
 
 

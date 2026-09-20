@@ -76,3 +76,17 @@ def test_upload_with_language_hint(client, valid_wav_bytes):
     assert response.status_code == 200
     res = response.json()
     assert res["language"] == "en"
+
+
+def test_upload_with_hindi_language_hint(client, valid_wav_bytes):
+    """Verifies Hindi language hint routes to IndicConformer with emotion=None."""
+    files = {"file": ("speech.wav", valid_wav_bytes, "audio/wav")}
+    data = {"language_hint": "hi"}
+    response = client.post("/api/speech/upload", files=files, data=data)
+
+    assert response.status_code == 200
+    res = response.json()
+    assert res["language"] == "hi"
+    assert res["emotion"] is None
+    assert res["debug"]["routing"]["engine"] == "indicconformer"
+    assert res["debug"]["routing"]["source"] == "hint"

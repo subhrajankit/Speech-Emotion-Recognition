@@ -2,6 +2,34 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 4 - Target Migration] - Hindi / Indic Language Routing & Unified SpeechEngine (2026-09-20)
+- **Standardized Language Router (`ai/routing/language_router.py`)**:
+  - Implemented `RoutingDecision` schema: `{language, confidence, engine, source: "hint" | "detected" | "default"}`.
+  - Implemented 3-tier precedence policy: explicit client `language_hint` wins (Tier 1); spoken LID above configurable threshold `LID_CONFIDENCE_THRESHOLD=0.6` (Tier 2); default engine `SenseVoiceSmall` (Tier 3).
+  - Pluggable `LanguageIdentifier` protocol allowing arbitrary LID backends or injected detectors for pure logic testing.
+  - Supported language registries: `INDIC_LANGUAGES` (22 scheduled Indian languages) and `SENSEVOICE_LANGUAGES` (`en`, `zh`, `yue`, `ja`, `ko`).
+- **IndicConformer-600m SpeechEngine (`ai/inference/indicconformer.py`)**:
+  - Implemented unified `SpeechEngine` abstract interface matching `SenseVoiceSpeechEngine`.
+  - Documented real loading via NVIDIA NeMo (`EncDecCTCModelBPE.from_pretrained(...)`), CTC vs RNNT decoding modes, and `language_id` argument with academic citations.
+  - Emotion Invariant: Guaranteed `emotion = None` and `emotion_scores = None` for all IndicConformer transcriptions. SenseVoice emotion head is never run on Hindi audio.
+  - Phase 5 Seam: Clean `apply_emotion_hook` decoupling hook ready for independent emotion engine integration.
+- **Unified Pipeline inside SpeechService (`backend/app/services/speech_service.py`)**:
+  - Integrated `LanguageRouter`, `SenseVoiceSpeechEngine`, and `IndicConformerSpeechEngine` into the single singleton `SpeechService`.
+  - Single non-blocking pipeline: `router.route()` -> select engine -> threadpool bounded execution -> unified `SpeechResult`.
+  - Enriched `SpeechResult.debug["routing"]` with full routing decision telemetry.
+  - Component health reporting updated for dual ASR engines.
+- **REST & WebSocket Endpoints Wiring (`backend/app/api/speech.py`, `websocket/speech_socket.py`)**:
+  - `POST /api/speech/upload`: Full support for `language_hint` form parameter, routing Indic audio to `indicconformer`.
+  - `WS /ws/speech`: `start` control frame parses `language_hint` and routes dynamic audio frames to the correct engine.
+- **LID Candidate Evaluation & Architectural Docs (`docs/architecture/language-routing.md`, `docs/api/websocket.md`)**:
+  - Comparative evaluation of SpeechBrain VoxLingua107, Meta MMS-LID, and OpenAI Whisper head across license, model size, CPU latency, and language coverage.
+  - Code-mixed speech (Hinglish) documented as an unmeasured known limitation until empirical benchmarks are established.
+- **Testing & Verification (`tests/ai/`, `tests/backend/`)**:
+  - `tests/ai/test_language_router.py`: 9 unit tests verifying pure decision logic with hand-written LID outputs.
+  - `tests/ai/test_indicconformer.py`: 6 tests verifying `SpeechEngine` interface compliance, emotion invariant, silence gating, and `@pytest.mark.model` skipping cleanly when weights are absent.
+  - `tests/backend/test_upload.py`, `tests/backend/test_websocket.py`: verified Hindi hint routes to IndicConformer returning `emotion = None`.
+  - 66 tests passing across `tests/ai/` and `tests/backend/`, 2 skipped cleanly with reasons. Zero errors.
+
 ## [Phase 3 - Target Migration] - Clean Minimal Dashboard & WebSocket Protocol v1 (2026-09-20)
 - **Repository Layout Relocation (`frontend/`)**:
   - Relocated frontend from `src/frontend/` to `frontend/` using `git mv` in accordance with target architecture (`docs/architecture/target-architecture.md`).
