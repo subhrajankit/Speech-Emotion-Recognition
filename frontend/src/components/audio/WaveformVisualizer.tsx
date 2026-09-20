@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 
-interface WaveformVisualizerProps {
+export interface WaveformVisualizerProps {
   state: 'idle' | 'listening' | 'thinking' | 'speaking';
   audioLevel?: number; // 0.0 to 1.0
   height?: number;
@@ -11,7 +11,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
   state,
   audioLevel = 0,
   height = 96,
-  className = ''
+  className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -59,9 +59,9 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       for (let i = 0; i < wavesCount; i++) {
         ctx.beginPath();
         const wavePhase = phaseRef.current + i * 0.8;
-        const opacity = 1 - (i * 0.22);
-        
-        ctx.strokeStyle = strokeColor.replace(/[\d\.]+\)$/, `${opacity})`);
+        const opacity = 1 - i * 0.22;
+
+        ctx.strokeStyle = strokeColor.replace(/[\d.]+\)$/, `${opacity})`);
         ctx.lineWidth = i === 0 ? 2.5 : 1.5;
 
         for (let x = 0; x < width; x += 3) {
@@ -76,9 +76,16 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
             const dynamicEnergy = Math.max(0.15, audioLevel * 1.5);
             amp = (20 * dynamicEnergy + 5) * Math.sin(normX * 8 + wavePhase) * envelope;
           } else if (state === 'thinking') {
-            amp = (8 + 4 * Math.sin(phaseRef.current * 2)) * Math.sin(normX * 6 + wavePhase) * envelope;
+            amp =
+              (8 + 4 * Math.sin(phaseRef.current * 2)) *
+              Math.sin(normX * 6 + wavePhase) *
+              envelope;
           } else if (state === 'speaking') {
-            amp = (24 * (0.4 + 0.6 * Math.sin(phaseRef.current * 3))) * Math.sin(normX * 7 + wavePhase) * envelope;
+            amp =
+              24 *
+              (0.4 + 0.6 * Math.sin(phaseRef.current * 3)) *
+              Math.sin(normX * 7 + wavePhase) *
+              envelope;
           }
 
           const y = centerY + amp;
@@ -102,10 +109,12 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
   return (
     <canvas
       ref={canvasRef}
-      style={{ height: `${height}px` }}
-      className={`waveform-canvas ${className}`}
-      aria-label={`Voice waveform state: ${state}`}
-      role="img"
+      className={className}
+      style={{
+        width: '100%',
+        height: `${height}px`,
+        display: 'block',
+      }}
     />
   );
 };

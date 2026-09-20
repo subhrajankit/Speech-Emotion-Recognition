@@ -344,9 +344,18 @@
   - **Shared Service Pipeline for Upload and Predict**: `POST /api/speech/upload` and `POST /api/predict` invoke the exact same `speech_service.transcribe_audio_bytes()` in-memory decoding pipeline. `POST /api/predict` returns `PredictionResponse(SpeechResult)`, appending an optional `assistant` block (`None` in Phase 2) for downstream LLM phases without duplicating validation or inference code.
   - **WebSocket Protocol v1 Specification**: Enforced client-server sequencing (`start` -> `ready` -> binary PCM16 -> `speech_result` -> `stop`), server-side Silero VAD state events (`speech_start`, `speech_end`), and per-connection 5MB audio buffer limits (`WS_MAX_BUFFER_BYTES`). Safely ignores reserved downstream message frames (`llm_delta`, `tts_chunk`, etc.) without connection termination.
   - **In-Memory Audio Ephemerality**: All audio processing occurs strictly in memory (`BytesIO` and NumPy buffers) with zero audio persistence to disk.
+## ADR 024: Target Layout Relocation, Pure Protocol Framing & Graceful Assistant Fallback (Phase 3 Migration)
+- **Context**: The frontend needed relocation to the root `frontend/` directory specified in `docs/architecture/target-architecture.md`, implementation of a clean, typed WebSocket client conforming to the Phase 2 Protocol v1 (`docs/api/websocket.md`), robust audio capture with AudioWorklet and error recovery, and rendering of all perceptual information even when downstream LLM or TTS services are not configured.
+- **Decision**:
+  - **Relocation (`src/frontend` -> `frontend`)**: Completed using `git mv` with zero duplicated components.
+  - **Typed Protocol Hook & Safe Unknown Message Policy**: All v1 message types are defined as strict TypeScript interfaces. Unknown or reserved downstream frames (`llm_delta`, `tts_chunk`, etc.) are safely ignored via `console.debug` and never terminate the socket connection.
+  - **Graceful Multi-Tier Perception Display**: When `/api/health` reports LLM or TTS as `"not_configured"` or `"offline"`, the assistant area shows a compact, informative notice. Real-time transcript, language, emotion, and latency continue to render normally without error screens.
+  - **Audio Capture & Fallback**: Used `AudioWorklet` with downsampling to 16 kHz mono signed 16-bit PCM in `/audio-processor.js`, with automatic fallback to `ScriptProcessorNode` if worklets are unavailable. Hardware errors (`NotAllowedError`, `NotFoundError`, and track `.onended` disconnects) trigger explicit user feedback.
+  - **Seamed History Store**: In-memory `conversationStore` with observer pattern decouples state from UI and provides an explicit seam for `/api/history` in Phase 9.
 - **Consequences**:
-  - Reliable, non-blocking asynchronous server performance.
-  - Consistent API contracts and standardized error schemas across all REST and WebSocket boundaries.
-  - Clean isolation: system operates completely standalone with zero dependencies on LLM, RAG, TTS, or database.
+  - Clean, modular frontend conforming to target architecture.
+  - Decoupled from backend completion of future LLM/TTS phases.
+  - 100% testable pure functions with Vitest and ESLint enforcement.
+
 
 

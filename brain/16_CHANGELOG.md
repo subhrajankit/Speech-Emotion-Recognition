@@ -2,6 +2,31 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 3 - Target Migration] - Clean Minimal Dashboard & WebSocket Protocol v1 (2026-09-20)
+- **Repository Layout Relocation (`frontend/`)**:
+  - Relocated frontend from `src/frontend/` to `frontend/` using `git mv` in accordance with target architecture (`docs/architecture/target-architecture.md`).
+- **Typed WebSocket Hook & Protocol v1 (`frontend/src/hooks/useWebSocket.ts`, `services/protocol.ts`)**:
+  - Handshake lifecycle: connects to `/ws/speech`, transmits `start` frame, handles `ready`, tracks `vad` (`speech_start`/`speech_end`), updates `speech_result`, and supports `ping`/`pong`.
+  - Reconnection resilience: exponential backoff (min 1s, factor 1.5, max 10s) with clear connection state (`disconnected`, `connecting`, `connected`, `reconnecting`, `error`).
+  - Safe ignoring: reserved downstream message types (`llm_delta`, `llm_done`, `tts_chunk`, `tts_done`, `status`) and unknown frames are logged to `console.debug` and safely passed without throwing errors or disconnecting.
+- **Audio Capture & Downsampling (`frontend/src/hooks/useAudioCapture.ts`)**:
+  - Real-time `getUserMedia` capture using `AudioWorklet` (`/audio-processor.js`) downsampling to 16 kHz mono signed 16-bit PCM.
+  - Automatic fallback to `ScriptProcessorNode` if `AudioWorklet` is unavailable.
+  - Hardware & permission error handling: handles `NotAllowedError` (permission denied), `NotFoundError` (no audio device), and tracks audio track `.onended` for mid-stream disconnects.
+- **Audio Playback Queue (`frontend/src/hooks/useAudioPlayback.ts`)**:
+  - Web Audio API FIFO playback queue decoding and playing chunks back-to-back without overlap. Built and verified, staying idle until Phase 8 delivers TTS chunks.
+- **Graceful Assistant Degradation & Subsystem Health (`frontend/src/components/`)**:
+  - `ResponseView`: when LLM and TTS are not configured (as in Phase 2/3), displays a graceful "assistant unavailable" notice while transcript, language, emotion, and latency continue to render normally.
+  - `ServiceStatusCard`: polls `/api/health` and renders real-time status indicators for 6 subsystems (`asr`, `emotion`, `llm`, `rag`, `tts`, `db`).
+- **In-Memory History Store (`frontend/src/stores/conversationStore.ts`)**:
+  - Store-backed history with observer pattern, reactive React hook, and clear architectural seam (`syncWithBackend()`) ready for `/api/history` in Phase 9.
+- **Accessibility & Design System (`frontend/src/components/`)**:
+  - `MicrophoneControl` with explicit `aria-label`, `aria-pressed`, live indicator, and keyboard toggle shortcut (Spacebar).
+  - Centralized environment variables (`VITE_API_URL`, `VITE_WS_URL`) via `frontend/src/lib/env.ts`.
+- **Verification Suite**:
+  - 17 unit tests in `frontend/src/tests/` verifying protocol serialization/parsing and store state management. All tests pass.
+  - `npm run lint` (`eslint`), `npx tsc --noEmit`, and `npm run build` pass with zero warnings and zero errors.
+
 ## [Phase 2 - Target Migration] - Clean FastAPI Boundaries & Real-Time WebSocket (2026-09-20)
 - **Modular Backend Architecture (`backend/app/`)**:
   - Application factory in `backend/app/main.py` with FastAPI lifespan model loading.
