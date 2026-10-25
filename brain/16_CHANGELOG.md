@@ -2,7 +2,38 @@
 
 All notable changes across build phases are recorded here.
 
-## [Phase 6 - Target Migration] - Qwen3 / LLM Service Integration (2026-09-20)
+## [Phase 5 - Target Migration] - Emotion Model & Training Pipeline (2026-10-25)
+- **Config-Driven Architecture (`ai/training/config/`)**:
+  - Authored `default.yaml` and `crema_d_smoke.yaml` controlling dataset paths, target emotions (`neutral`, `happy`, `sad`, `angry`), label mappings, split ratios, seeds, and hyperparameters.
+- **Dataset Preprocessing & Speaker-Independent Split Invariant (`ai/training/dataset.py`)**:
+  - Implemented CREMA-D audio directory parser and canonical label mapper.
+  - Implemented `create_speaker_independent_split()` strictly partitioning dataset by unique speaker IDs (70/15/15), guaranteeing zero speaker leakage across train, val, and test splits.
+  - Generates reproducible CSV manifests in `data/metadata/` tracking sample IDs, file paths, speaker IDs, emotions, and durations.
+  - Implemented inverse-frequency class weight computation (`compute_class_weights`) handling class imbalance explicitly.
+  - Reused `ai.preprocessing.audio.load_and_preprocess_audio` so training and inference process identical 16 kHz mono normalized audio.
+- **Emotion Model Architecture (`ai/models/emotion/`)**:
+  - Defined Pydantic configuration schema `EmotionModelConfig` in `ai/models/emotion/config.py`.
+  - Built `EmotionClassifier` (PyTorch `nn.Module` with temporal attention/mean pooling, LayerNorm, Dropout, and MLP) and standalone `NumPyEmotionClassifier` in `ai/models/emotion/model.py`.
+- **Reproducible Training Pipeline (`ai/training/train.py`)**:
+  - Logs fixed random seeds, git commit hash (`git rev-parse HEAD`), and runtime environment package versions with every run.
+  - Persists model configurations and best checkpoints into `docs/training/runs/<run_id>/checkpoints/`.
+  - Generates comprehensive run metadata in `docs/training/runs/<run_id>/run_metadata.json`.
+- **Evaluation Pipeline & Zero-Shot Baseline (`ai/training/evaluate.py`, `ai/training/metrics.py`)**:
+  - Pure NumPy implementation of classification metrics: overall accuracy, Unweighted Average Recall (UAR), per-class Precision/Recall/F1, Macro F1, Weighted F1, and confusion matrix.
+  - Exports `metrics.json`, `confusion_matrix.csv`, and `evaluation_summary.txt`.
+  - Built SenseVoiceSmall zero-shot emotion baseline evaluation comparing discrete tag predictions on held-out test audio and logging `sensevoice_baseline.json`.
+- **Independent Emotion Perception Engine (`ai/inference/emotion.py`)**:
+  - Implemented `EmotionEngine` protocol and `Wav2Vec2EmotionEngine` loading checkpoints and returning structured `EmotionResult(primary, confidence, scores, processing_time_ms, model_version)`.
+  - Verified strict architectural isolation: AST inspection proves 0 imports of LLM, RAG, TTS, or speech services.
+- **Methodological Documentation & Transparency (`docs/dataset/crema_d.md`, `docs/training/README.md`)**:
+  - Explicitly disclosed that CREMA-D is an acted-speech dataset, cautioning that laboratory metrics do not reflect spontaneous real-world performance.
+  - Enforced zero-fabrication policy: unmeasured benchmark tables explicitly display "NOT YET MEASURED".
+  - Documented exact commands to reproduce smoke and full training runs, plus hardware estimates for RTX 2050 (4 GB VRAM).
+- **Verification Suite (`tests/ai/`)**:
+  - `tests/ai/test_emotion_split.py`: 6 tests verifying zero speaker leakage, split reproducibility, and manifest roundtrips.
+  - `tests/ai/test_emotion_metrics.py`: 3 tests validating exact accuracy, UAR, per-class F1, and confusion matrix against hand-calculated ground truth.
+  - `tests/ai/test_emotion_inference.py`: 5 tests validating engine interface compliance, probability calibration ($\sum p_i = 1.0$), audio formats, and AST import isolation.
+  - 61 passed, 2 skipped across `tests/ai/`. All Phase 1 tests pass.
 - **Decoupled LLM Service Interface (`backend/app/services/llm_service.py`)**:
   - Implemented `LLMService` communicating with local `llama-server` over HTTP using `httpx` with explicit timeouts.
   - Implemented `generate(messages, *, emotion=None, language=None, stream=True, max_tokens=None, timeout=None)` supporting async token streaming and non-streaming modes.

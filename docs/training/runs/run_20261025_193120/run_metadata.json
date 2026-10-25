@@ -1,0 +1,86 @@
+{
+  "run_id": "run_20261025_193120",
+  "run_type": "smoke_test",
+  "timestamp": "20261025_193120",
+  "git_commit": "f1ae29cf62e6326df7c31c20b788dc4c89a423d1",
+  "environment": {
+    "python_version": "3.13.14",
+    "numpy_version": "2.5.3",
+    "platform": "win32",
+    "torch_version": "NOT_INSTALLED",
+    "cuda_available": "False",
+    "soundfile_version": "0.14.0"
+  },
+  "dataset": {
+    "name": "crema_d_smoke",
+    "target_emotions": [
+      "neutral",
+      "happy",
+      "sad",
+      "angry"
+    ],
+    "total_samples": 30,
+    "split_counts": {
+      "train": 20,
+      "val": 5,
+      "test": 5
+    },
+    "speaker_counts": {
+      "train": 4,
+      "val": 1,
+      "test": 1
+    },
+    "class_distribution": {
+      "train": {
+        "happy": 5,
+        "sad": 5,
+        "angry": 5,
+        "neutral": 5
+      },
+      "val": {
+        "neutral": 3,
+        "sad": 2
+      },
+      "test": {
+        "happy": 3,
+        "angry": 2
+      }
+    },
+    "class_weighting": {
+      "method": "balanced_loss",
+      "weights": {
+        "neutral": 1.0,
+        "happy": 1.0,
+        "sad": 1.0,
+        "angry": 1.0
+      }
+    }
+  },
+  "model": {
+    "model_name": "wav2vec2_classifier_smoke",
+    "backbone": "facebook/wav2vec2-base",
+    "embedding_dim": 768,
+    "hidden_dim": 64,
+    "dropout": 0.1,
+    "pooling": "mean",
+    "emotions": [
+      "neutral",
+      "happy",
+      "sad",
+      "angry"
+    ]
+  },
+  "training_params": {
+    "epochs": 1,
+    "batch_size": 4,
+    "seed": 42,
+    "training_time_sec": 0.86
+  },
+  "artifacts": {
+    "checkpoint": "D:\\Capstone Project\\NewSenseVoice\\docs\\training\\runs\\run_20261025_193120\\checkpoints\\best_model.npz",
+    "model_config": "D:\\Capstone Project\\NewSenseVoice\\docs\\training\\runs\\run_20261025_193120\\checkpoints\\model_config.json",
+    "train_manifest": "D:\\Capstone Project\\NewSenseVoice\\data\\metadata\\crema_d_smoke_train.csv",
+    "val_manifest": "D:\\Capstone Project\\NewSenseVoice\\data\\metadata\\crema_d_smoke_val.csv",
+    "test_manifest": "D:\\Capstone Project\\NewSenseVoice\\data\\metadata\\crema_d_smoke_test.csv"
+  }
+}

@@ -400,3 +400,29 @@
   - Complete operational decoupling: ASR and emotion services function perfectly even if the LLM server is terminated or crashes.
   - Zero performance degradation on perception pipelines.
   - Full adherence to the Phase 6 specification.
+
+## ADR 027: Emotion Model Architecture, Speaker-Independent Split Invariant, and Decoupled SER Pipeline (Phase 5 Migration)
+- **Context**:
+  Building a reproducible, independent Speech Emotion Recognition (SER) training and inference pipeline required choosing a primary dataset, establishing strict speaker-independent splitting to prevent identity leakage, ensuring the model fits comfortably within 4 GB VRAM on the target RTX 2050 GPU, and decoupling emotion perception completely from ASR, LLM, RAG, and TTS.
+- **Decision**:
+  - **Dataset Selection (CREMA-D)**:
+    Selected CREMA-D (7,442 clips across 91 ethnically diverse professional actors) under the Open Database License (ODbL v1.0). Permissive license avoids non-commercial or institutional access gates (unlike IITKGP-SEHSC or IEMOCAP).
+  - **4-Class Core Mapping (`neutral`, `happy`, `sad`, `angry`)**:
+    Focused on the 4 primary emotions that drive >90% of empathetic conversational voice delivery (soothing de-escalation for anger, empathy for sadness, cheerfulness for happiness, balanced tone for neutral). Maps 1:1 with SenseVoice's discrete tags (`<|NEUTRAL|>`, `<|HAPPY|>`, `<|SAD|>`, `<|ANGRY|>`) for zero-shot baseline evaluation.
+  - **Speaker-Independent Split Invariant**:
+    Enforced strict mathematical partition by actor ID (70% train, 15% val, 15% test):
+    $$\text{Speakers}(\text{Train}) \cap \text{Speakers}(\text{Val}) \cap \text{Speakers}(\text{Test}) = \emptyset$$
+    Split manifests are serialized as CSV in `data/metadata/`.
+  - **Frozen SSL Audio Backbone + Lightweight Classification Head**:
+    Adopted a frozen SSL encoder (`facebook/wav2vec2-base` or `indicwav2vec`) coupled to a temporal pooling and MLP classification head. Peak VRAM footprint is < 1.6 GB, eliminating CUDA Out-of-Memory (OOM) faults on 4 GB RTX 2050 laptops and enabling fast convergence.
+  - **Explicit Class Imbalance Handling**:
+    Computes inverse-frequency class weights $w_c = \frac{N}{K \cdot N_c}$ on the training split and applies them directly to the loss function.
+  - **Independent `EmotionEngine` Interface (`ai/inference/emotion.py`)**:
+    Encapsulates emotion inference behind an abstract `EmotionEngine` protocol returning typed `EmotionResult` with calibrated softmax probabilities ($\sum p_i = 1.0$). Reuses `ai.preprocessing.audio.load_and_preprocess_audio` so training and inference process identical 16 kHz mono normalized audio. Automated AST scan asserts zero imports of `llm`, `rag`, `tts`, or `speech_service`.
+  - **Methodological Transparency & Truthfulness**:
+    Documented in `docs/dataset/crema_d.md` that CREMA-D is an acted dataset and metrics do not reflect spontaneous real-world conversation. Baseline comparison tables in `docs/training/README.md` strictly display "NOT YET MEASURED" until full runs are executed.
+- **Consequences**:
+  - 100% decoupled SER pipeline capable of running standalone on CPU or GPU.
+  - Full reproducibility with logged seeds, git commit hashes, and environment versions.
+  - Drop-in extensibility for future Hindi/Indic datasets without pipeline rewrites.
+

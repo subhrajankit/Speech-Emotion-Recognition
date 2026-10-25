@@ -1,0 +1,53 @@
+# Smoke Test Configuration for Emotion Training Pipeline
+# SenseAI Voice Assistant - Phase 5 Smoke Run
+
+dataset:
+  name: "crema_d_smoke"
+  audio_dir: "data/raw/crema_d"
+  manifest_dir: "data/metadata"
+  target_emotions:
+    - "neutral"
+    - "happy"
+    - "sad"
+    - "angry"
+  label_mapping:
+    NEU: "neutral"
+    HAP: "happy"
+    SAD: "sad"
+    ANG: "angry"
+  split_ratios:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  seed: 42
+
+model:
+  model_name: "wav2vec2_classifier_smoke"
+  backbone: "facebook/wav2vec2-base"
+  embedding_dim: 768
+  hidden_dim: 64
+  dropout: 0.1
+  pooling: "mean"
+  emotions:
+    - "neutral"
+    - "happy"
+    - "sad"
+    - "angry"
+
+training:
+  batch_size: 4
+  learning_rate: 0.005
+  weight_decay: 0.001
+  epochs: 1
+  class_weighting: "balanced_loss"
+  seed: 42
+  device: "cpu"
+  smoke_test: true
+
+evaluation:
+  sensevoice_baseline: true
+  sensevoice_tag_mapping:
+    "<|NEUTRAL|>": "neutral"
+    "<|HAPPY|>": "happy"
+    "<|SAD|>": "sad"
+    "<|ANGRY|>": "angry"

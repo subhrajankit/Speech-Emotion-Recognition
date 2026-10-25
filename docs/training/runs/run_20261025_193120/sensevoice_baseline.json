@@ -1,0 +1,12 @@
+{
+  "status": "NOT_YET_MEASURED",
+  "message": "Zero real test samples were processed (mock mode or files absent)",
+  "label_mapping": {
+    "<|NEUTRAL|>": "neutral",
+    "<|HAPPY|>": "happy",
+    "<|SAD|>": "sad",
+    "<|ANGRY|>": "angry"
+  },
+  "evaluated_samples": 0,
+  "skipped_samples": 5
+}

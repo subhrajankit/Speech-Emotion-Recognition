@@ -1,0 +1,6 @@
+sample_id,file_path,speaker_id,emotion,raw_emotion,duration_sec
+sample_0000,data/raw/crema_d/smoke_speaker_001_neutral_000.wav,speaker_001,neutral,NEU,2.5
+sample_0006,data/raw/crema_d/smoke_speaker_001_sad_006.wav,speaker_001,sad,SAD,2.5
+sample_0012,data/raw/crema_d/smoke_speaker_001_neutral_012.wav,speaker_001,neutral,NEU,2.5
+sample_0018,data/raw/crema_d/smoke_speaker_001_sad_018.wav,speaker_001,sad,SAD,2.5
+sample_0024,data/raw/crema_d/smoke_speaker_001_neutral_024.wav,speaker_001,neutral,NEU,2.5

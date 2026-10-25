@@ -1,0 +1,14 @@
+{
+  "model_name": "wav2vec2_classifier_smoke",
+  "backbone": "facebook/wav2vec2-base",
+  "embedding_dim": 768,
+  "hidden_dim": 64,
+  "dropout": 0.1,
+  "pooling": "mean",
+  "emotions": [
+    "neutral",
+    "happy",
+    "sad",
+    "angry"
+  ]
+}

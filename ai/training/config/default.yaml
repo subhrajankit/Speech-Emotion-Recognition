@@ -1,0 +1,53 @@
+# Default Configuration for Emotion Training Pipeline
+# SenseAI Voice Assistant - Phase 5
+
+dataset:
+  name: "crema_d"
+  audio_dir: "data/raw/crema_d"
+  manifest_dir: "data/metadata"
+  target_emotions:
+    - "neutral"
+    - "happy"
+    - "sad"
+    - "angry"
+  label_mapping:
+    NEU: "neutral"
+    HAP: "happy"
+    SAD: "sad"
+    ANG: "angry"
+  split_ratios:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  seed: 42
+
+model:
+  model_name: "wav2vec2_classifier"
+  backbone: "facebook/wav2vec2-base"
+  embedding_dim: 768
+  hidden_dim: 256
+  dropout: 0.2
+  pooling: "mean"
+  emotions:
+    - "neutral"
+    - "happy"
+    - "sad"
+    - "angry"
+
+training:
+  batch_size: 16
+  learning_rate: 0.001
+  weight_decay: 0.01
+  epochs: 15
+  class_weighting: "balanced_loss"
+  seed: 42
+  device: "auto"
+  early_stopping_patience: 3
+
+evaluation:
+  sensevoice_baseline: true
+  sensevoice_tag_mapping:
+    "<|NEUTRAL|>": "neutral"
+    "<|HAPPY|>": "happy"
+    "<|SAD|>": "sad"
+    "<|ANGRY|>": "angry"

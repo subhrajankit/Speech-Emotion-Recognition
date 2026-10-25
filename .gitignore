@@ -49,14 +49,21 @@ security/secrets/
 !security/secrets.example/**
 
 # Models & Large Checkpoints (Local-only, do not commit)
-models/
+/models/
+!ai/models/**
+ai/models/**/__pycache__/
 *.gguf
 *.onnx
 *.bin
 *.safetensors
 *.pt
+*.pth
+*.ckpt
+*.npz
 *.tar.gz
 *.zip
+data/raw/
+data/datasets/
 
 # Database & Vectors
 database/*.db*
@@ -68,6 +75,8 @@ data/index/*.index
 data/index/*.faiss
 data/index/chunks.json
 !data/index/.gitkeep
+rag/vectorstore/*
+!rag/vectorstore/.gitkeep
 
 # Audio temporary files (Strict zero-persistence rule)
 *.wav
