@@ -112,7 +112,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
               break;
 
             case 'error':
-              setLastError(`[${message.code}] ${message.message}`);
+              if (message.code !== 'llm_unavailable' && message.code !== 'tts_unavailable') {
+                setLastError(`[${message.code}] ${message.message}`);
+              }
               optionsRef.current.onError?.(message);
               break;
 

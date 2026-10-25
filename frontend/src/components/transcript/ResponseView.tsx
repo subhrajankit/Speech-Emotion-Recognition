@@ -6,6 +6,7 @@ export interface ResponseViewProps {
   responseText?: string;
   isThinking?: boolean;
   isAssistantConfigured?: boolean;
+  isAssistantUnavailable?: boolean;
   totalLatencyMs?: number;
   className?: string;
 }
@@ -14,6 +15,7 @@ export const ResponseView: React.FC<ResponseViewProps> = ({
   responseText = '',
   isThinking = false,
   isAssistantConfigured = false,
+  isAssistantUnavailable = false,
   totalLatencyMs,
   className = '',
 }) => {
@@ -36,9 +38,11 @@ export const ResponseView: React.FC<ResponseViewProps> = ({
           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
             AI Assistant
           </span>
-          {!isAssistantConfigured && (
-            <Badge variant="neutral">Phase 2/3 Perception</Badge>
-          )}
+          {isAssistantUnavailable ? (
+            <Badge variant="warning">Assistant Unavailable</Badge>
+          ) : !isAssistantConfigured ? (
+            <Badge variant="neutral">Perception Mode</Badge>
+          ) : null}
         </div>
 
         {totalLatencyMs !== undefined && totalLatencyMs > 0 && (
@@ -72,6 +76,25 @@ export const ResponseView: React.FC<ResponseViewProps> = ({
           </div>
         ) : responseText ? (
           <div style={{ color: 'var(--text-primary)' }}>{responseText}</div>
+        ) : isAssistantUnavailable ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.65rem 0.9rem',
+              backgroundColor: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.85rem',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <Info size={16} style={{ color: 'var(--color-energy)', flexShrink: 0 }} />
+            <span>
+              Assistant unavailable (LLM / TTS offline). Speech transcription, language detection, and emotion analysis remain active.
+            </span>
+          </div>
         ) : !isAssistantConfigured ? (
           <div
             style={{

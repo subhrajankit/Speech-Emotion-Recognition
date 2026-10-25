@@ -100,6 +100,33 @@ describe('WebSocket Protocol v1 Parser', () => {
     }
   });
 
+  it('parses speech_result with emotion = null and confidence = null correctly', () => {
+    const raw = JSON.stringify({
+      type: 'speech_result',
+      transcript: 'नमस्ते आप कैसे हैं',
+      language: 'hi',
+      emotion: null,
+      confidence: null,
+      processing_time_ms: 110,
+      model_version: 'IndicConformer-600m',
+      audio_events: ['Speech'],
+      segments: [],
+    });
+
+    const result = parseServerMessage(raw);
+    expect(result).not.toBeNull();
+    expect(result?.type).toBe('speech_result');
+
+    if (result && result.type === 'speech_result') {
+      expect(result.transcript).toBe('नमस्ते आप कैसे हैं');
+      expect(result.language).toBe('hi');
+      expect(result.emotion).toBeNull();
+      expect(result.confidence).toBeNull();
+      expect(result.processing_time_ms).toBe(110);
+      expect(result.model_version).toBe('IndicConformer-600m');
+    }
+  });
+
   it('parses error frames correctly', () => {
     const raw = JSON.stringify({
       type: 'error',

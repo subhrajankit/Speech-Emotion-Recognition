@@ -32,6 +32,7 @@ export function App() {
   const [audioEvents, setAudioEvents] = useState<string[]>([]);
   const [vadHasSpeech, setVadHasSpeech] = useState<boolean>(false);
   const [activeAlert, setActiveAlert] = useState<{ variant: 'danger' | 'warning' | 'info'; message: string } | null>(null);
+  const [isAssistantUnavailable, setIsAssistantUnavailable] = useState<boolean>(false);
 
   // Store & Health Hooks
   const { items: historyItems, addItem, clearHistory, syncWithBackend } = useConversationHistory();
@@ -82,6 +83,10 @@ export function App() {
 
   // Handle server errors
   const handleServerError = useCallback((err: ErrorMessage) => {
+    if (err.code === 'llm_unavailable' || err.code === 'tts_unavailable') {
+      setIsAssistantUnavailable(true);
+      return;
+    }
     setActiveAlert({
       variant: 'danger',
       message: `[${err.code}] ${err.message}`,
@@ -225,6 +230,7 @@ export function App() {
               responseText=""
               isThinking={false}
               isAssistantConfigured={isAssistantConfigured}
+              isAssistantUnavailable={isAssistantUnavailable}
               totalLatencyMs={latencies.total_ms}
             />
           </div>

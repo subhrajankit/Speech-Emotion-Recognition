@@ -75,8 +75,11 @@ All notable changes across build phases are recorded here.
 - **Accessibility & Design System (`frontend/src/components/`)**:
   - `MicrophoneControl` with explicit `aria-label`, `aria-pressed`, live indicator, and keyboard toggle shortcut (Spacebar).
   - Centralized environment variables (`VITE_API_URL`, `VITE_WS_URL`) via `frontend/src/lib/env.ts`.
+- **Null-Safe Affective State & Assistant Degradation (`frontend/src/components/`, `hooks/useWebSocket.ts`)**:
+  - `EmotionBadge`: strictly enforces null-safe rendering displaying `Emotion: —` and confidence `not available` when values are null, undefined, or NaN (as in Indic ASR).
+  - `ResponseView`: adds dedicated `isAssistantUnavailable` state; catches `llm_unavailable` / `tts_unavailable` error codes without triggering full-screen blocking danger alerts, preserving transcript, language, emotion, and latency views.
 - **Verification Suite**:
-  - 17 unit tests in `frontend/src/tests/` verifying protocol serialization/parsing and store state management. All tests pass.
+  - 18 unit tests in `frontend/src/tests/` verifying protocol serialization/parsing (including null emotion/confidence frames) and store state management. All tests pass.
   - `npm run lint` (`eslint`), `npx tsc --noEmit`, and `npm run build` pass with zero warnings and zero errors.
 
 ## [Phase 2 - Target Migration] - Clean FastAPI Boundaries & Real-Time WebSocket (2026-09-20)

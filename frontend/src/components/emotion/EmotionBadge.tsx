@@ -15,9 +15,9 @@ export const EmotionBadge: React.FC<EmotionBadgeProps> = ({
 }) => {
   if (!emotion) {
     return (
-      <Badge variant="neutral" className={className}>
+      <Badge variant="neutral" className={className} aria-label="Emotion not available">
         <HelpCircle size={13} style={{ marginRight: '4px' }} />
-        <span>Emotion: None</span>
+        <span>Emotion: —</span>
       </Badge>
     );
   }
@@ -68,9 +68,9 @@ export const EmotionBadge: React.FC<EmotionBadgeProps> = ({
 
   const { icon, variant, label } = getEmotionDetails();
   const confidenceText =
-    typeof confidence === 'number'
+    typeof confidence === 'number' && !Number.isNaN(confidence)
       ? `${Math.round(confidence * 100)}%`
-      : 'uncalibrated';
+      : 'not available';
 
   return (
     <Badge variant={variant} className={className} style={{ textTransform: 'capitalize' }}>
