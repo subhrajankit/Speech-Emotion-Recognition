@@ -142,3 +142,43 @@ def test_no_hint_no_lid_routes_to_default():
     assert decision.engine == "sensevoice"
     assert decision.source == "default"
     assert decision.confidence is None
+
+
+@pytest.mark.asyncio
+async def test_indicconformer_failure_triggers_fallback_to_sensevoice():
+    """
+    Requirement 7: If IndicConformer fails during transcription,
+    falls back to the default engine (SenseVoice) and reports the fallback in result.debug.
+    """
+    from unittest.mock import MagicMock
+    from backend.app.services.speech_service import SpeechService
+    from ai.inference.types import SpeechResult
+
+    service = SpeechService()
+    service._sensevoice = MagicMock()
+    service._sensevoice.transcribe.return_value = SpeechResult(
+        transcript="Hello from fallback SenseVoice",
+        language="en",
+        emotion="neutral",
+        confidence=None,
+        processing_time_ms=10,
+        model_version="SenseVoiceSmall (mock)",
+        debug={"status": "mock_inference"}
+    )
+    service._indicconformer = MagicMock()
+    service._indicconformer.transcribe.side_effect = RuntimeError("Inference failed: CUDA OOM")
+    service._router = LanguageRouter()
+    service._engine = service._sensevoice
+    service._is_initialized = True
+
+    dummy_audio = np.ones(16000, dtype=np.float32)
+    result = await service.transcribe_array(audio=dummy_audio, language_hint="hi")
+
+    assert result.transcript == "Hello from fallback SenseVoice"
+    assert result.debug is not None
+    assert "fallback" in result.debug
+    assert result.debug["fallback"]["from_engine"] == "indicconformer"
+    assert result.debug["fallback"]["to_engine"] == "sensevoice"
+    assert "Inference failed: CUDA OOM" in result.debug["fallback"]["error"]
+    assert result.debug["routing"]["engine"] == "indicconformer"
+    assert result.debug["routing"]["source"] == "hint"

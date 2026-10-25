@@ -50,6 +50,9 @@ class SpeechService:
 
         logger.info(f"Initializing SpeechService (mock={settings.MOCK_MODELS})...")
 
+        # Auto-load can be disabled via LAZY_LOAD_MODELS or MOCK_MODELS
+        auto_load = (not settings.MOCK_MODELS) and (not settings.LAZY_LOAD_MODELS)
+
         # 1. Initialize SenseVoiceSmall (Global ASR + SER)
         try:
             self._sensevoice = SenseVoiceSpeechEngine(
@@ -58,7 +61,7 @@ class SpeechService:
                 threads=settings.SENSEVOICE_THREADS,
                 vad_threshold=settings.VAD_THRESHOLD,
                 mock=settings.MOCK_MODELS,
-                auto_load=not settings.MOCK_MODELS,
+                auto_load=auto_load,
             )
             self._init_error = None
             logger.info("SenseVoice engine initialized successfully.")
@@ -82,7 +85,7 @@ class SpeechService:
                 decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
                 vad_threshold=settings.VAD_THRESHOLD,
                 mock=settings.MOCK_MODELS,
-                auto_load=not settings.MOCK_MODELS,
+                auto_load=auto_load,
             )
             self._indic_init_error = None
             logger.info("IndicConformer engine initialized successfully.")
@@ -152,20 +155,30 @@ class SpeechService:
         if not self.is_ready:
             raise RuntimeError("SpeechService is not initialized.")
 
-        # 1. Determine routing decision
-        if self._router is not None:
-            decision: RoutingDecision = self._router.route(
-                audio=audio,
-                sample_rate=sample_rate,
-                language_hint=language_hint
-            )
-        else:
+        # 1. Determine routing decision with fallback safety
+        try:
+            if self._router is not None:
+                decision: RoutingDecision = self._router.route(
+                    audio=audio,
+                    sample_rate=sample_rate,
+                    language_hint=language_hint
+                )
+            else:
+                decision = RoutingDecision(
+                    language=language_hint or "en",
+                    confidence=None,
+                    engine="sensevoice",
+                    source="default",
+                    debug={"policy": "no_router_fallback"}
+                )
+        except Exception as route_err:
+            logger.error(f"Routing failed ({route_err}). Falling back to default engine.")
             decision = RoutingDecision(
                 language=language_hint or "en",
                 confidence=None,
                 engine="sensevoice",
                 source="default",
-                debug={"policy": "no_router_fallback"}
+                debug={"policy": "router_error_fallback", "error": str(route_err)}
             )
 
         # 2. Select speech engine according to routing decision
@@ -175,19 +188,45 @@ class SpeechService:
             selected_engine = self._sensevoice or self._engine
 
         sem = self._get_semaphore()
-        async with sem:
-            result = await asyncio.to_thread(
-                selected_engine.transcribe,
-                audio=audio,
-                sample_rate=sample_rate,
-                language_hint=decision.language
-            )
+        try:
+            async with sem:
+                result = await asyncio.to_thread(
+                    selected_engine.transcribe,
+                    audio=audio,
+                    sample_rate=sample_rate,
+                    language_hint=decision.language
+                )
 
-            # Enrich result debug payload with routing telemetry
-            if result.debug is not None:
-                result.debug["routing"] = decision.model_dump()
+                # Enrich result debug payload with routing telemetry
+                if result.debug is not None:
+                    result.debug["routing"] = decision.model_dump()
 
-            return result
+                return result
+        except Exception as engine_err:
+            # Fallback to default engine if IndicConformer or non-default engine fails
+            default_engine = self._sensevoice or self._engine
+            if selected_engine != default_engine and default_engine is not None:
+                logger.warning(
+                    f"Selected engine '{decision.engine}' failed ({engine_err}). "
+                    f"Falling back to default engine 'sensevoice'."
+                )
+                async with sem:
+                    fallback_res = await asyncio.to_thread(
+                        default_engine.transcribe,
+                        audio=audio,
+                        sample_rate=sample_rate,
+                        language_hint="en"
+                    )
+                    if fallback_res.debug is None:
+                        fallback_res.debug = {}
+                    fallback_res.debug["routing"] = decision.model_dump()
+                    fallback_res.debug["fallback"] = {
+                        "from_engine": decision.engine,
+                        "to_engine": "sensevoice",
+                        "error": str(engine_err)
+                    }
+                    return fallback_res
+            raise
 
     async def transcribe_audio_bytes(
         self,

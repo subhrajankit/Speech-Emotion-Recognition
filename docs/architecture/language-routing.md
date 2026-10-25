@@ -42,6 +42,7 @@ This document specifies the language routing architecture, Spoken Language Ident
 1. **Single Unified Pipeline**: Audio routing and engine dispatch are handled strictly within `SpeechService`. No secondary or duplicated speech pipeline exists.
 2. **Standardized Schema**: Both engines return the identical `SpeechResult` schema.
 3. **Decoupled Emotion (SER)**: IndicConformer is an ASR model only and outputs `emotion = None`. SenseVoice's emotion head is **never** run on Hindi audio. A clean hook is reserved for the Phase 5 emotion engine.
+4. **Engine Fallback & Lazy Loading**: Both engines support lazy / on-demand loading (`LAZY_LOAD_MODELS=true`), ensuring deployments that only need one engine do not pay the memory cost of the other. If routing or IndicConformer execution fails, the pipeline automatically falls back to the default engine (`sensevoice`) and documents the fallback in `result.debug["fallback"]`.
 
 ---
 

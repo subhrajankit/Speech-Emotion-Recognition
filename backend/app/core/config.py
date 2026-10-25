@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     INDICCONFORMER_DECODER_TYPE: str = "ctc"
     LID_CONFIDENCE_THRESHOLD: float = 0.6
     MOCK_MODELS: bool = False
+    LAZY_LOAD_MODELS: bool = True
 
     # LLM Settings (Qwen3 via local llama.cpp)
     LLM_BASE_URL: str = "http://127.0.0.1:8080"
@@ -75,6 +76,14 @@ class Settings(BaseSettings):
     LLM_HEALTH_CACHE_SECONDS: float = 5.0
     LLM_FAILURE_THRESHOLD: int = 3
     LLM_COOLDOWN_SECONDS: float = 15.0
+
+    # TTS Settings (Indic Parler-TTS — ai4bharat/indic-parler-tts)
+    TTS_MODEL_ID: str = "ai4bharat/indic-parler-tts"
+    TTS_DEVICE: str = "cpu"
+    TTS_SAMPLE_RATE: int = 44100
+    TTS_EMOTION_STYLING_ENABLED: bool = True
+    TTS_DEFAULT_SPEAKER: str = "Aditi"
+    TTS_MAX_SENTENCE_LENGTH: int = 500
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
