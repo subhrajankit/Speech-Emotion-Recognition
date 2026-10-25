@@ -4,6 +4,7 @@ Implements WebSocket protocol v1 with server-side VAD segmentation,
 non-blocking inference, per-connection buffer limits, keepalives, and auth gating.
 """
 
+import asyncio
 import json
 import logging
 from typing import Optional, Dict, Any, List
@@ -21,6 +22,7 @@ from backend.app.services.llm_service import (
     LLMResponseError,
 )
 from backend.app.services.prompt_builder import PromptBuilder
+from backend.app.services.rag_service import rag_service
 
 logger = logging.getLogger("voicesense.websocket")
 
@@ -32,6 +34,7 @@ RESERVED_MESSAGE_TYPES = {
     "tts_chunk",
     "tts_done",
     "status",
+    "rag_sources",
 }
 
 
@@ -56,16 +59,28 @@ async def handle_llm_turn(
     Streams llm_delta tokens and emits llm_done upon completion.
     On failure, emits {"type": "error", "code": "llm_unavailable", "message": ...}
     and keeps the socket open.
+    Supports clean cancellation via asyncio.CancelledError when a new 'start'
+    or client disconnect occurs.
     """
     transcript_clean = transcript.strip() if transcript else ""
     if not transcript_clean:
         return
+
+    # Phase 7: Intent-Gated RAG (Normal conversation never touches FAISS)
+    rag_turn = await rag_service.process_turn(transcript_clean)
+    if rag_turn.retrieval_performed and rag_turn.cited_docs:
+        await safe_send_json(websocket, {
+            "type": "rag_sources",
+            "sources": rag_turn.cited_docs,
+        })
 
     messages = PromptBuilder.build_chat_messages(
         transcript=transcript_clean,
         conversation_history=conversation_history,
         emotion=emotion,
         language=language,
+        grounded_context=rag_turn.grounded_context,
+        cited_docs=rag_turn.cited_docs,
     )
 
     full_response_parts: List[str] = []
@@ -97,6 +112,9 @@ async def handle_llm_turn(
         if full_text:
             conversation_history.append({"role": "assistant", "content": full_text})
 
+    except asyncio.CancelledError:
+        logger.info("In-flight LLM stream cancelled (barge-in / disconnect).")
+        raise
     except (LLMUnavailable, LLMTimeout, LLMResponseError, LLMError) as e:
         logger.warning(f"LLM generation failed: {e}")
         await safe_send_json(websocket, {
@@ -154,6 +172,17 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     encoding = "pcm_s16le"
     language_hint: Optional[str] = None
     conversation_history: List[Dict[str, str]] = []
+    active_llm_task: Optional[asyncio.Task] = None
+
+    async def cancel_active_llm():
+        nonlocal active_llm_task
+        if active_llm_task and not active_llm_task.done():
+            active_llm_task.cancel()
+            try:
+                await active_llm_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            active_llm_task = None
 
     vad = SileroVAD(threshold=settings.VAD_THRESHOLD, mock=settings.MOCK_MODELS)
     segmenter = VADSpeechSegmenter(
@@ -191,8 +220,9 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                     await websocket.send_json({"type": "pong"})
                     continue
 
-                # Start streaming session
+                # Start streaming session (cancels any in-flight LLM stream)
                 if action == "start":
+                    await cancel_active_llm()
                     sample_rate = int(payload.get("sample_rate", 16000))
                     encoding = payload.get("encoding", "pcm_s16le")
                     language_hint = payload.get("language_hint")
@@ -230,12 +260,15 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                                 "type": "speech_result",
                                 **speech_res.model_dump()
                             })
-                            await handle_llm_turn(
-                                websocket=websocket,
-                                transcript=speech_res.transcript,
-                                emotion=speech_res.emotion,
-                                language=speech_res.language,
-                                conversation_history=conversation_history,
+                            await cancel_active_llm()
+                            active_llm_task = asyncio.create_task(
+                                handle_llm_turn(
+                                    websocket=websocket,
+                                    transcript=speech_res.transcript,
+                                    emotion=speech_res.emotion,
+                                    language=speech_res.language,
+                                    conversation_history=conversation_history,
+                                )
                             )
                         except Exception as e:
                             logger.error(f"Inference error during stop flush: {e}")
@@ -313,12 +346,15 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             "type": "speech_result",
                             **speech_res.model_dump()
                         })
-                        await handle_llm_turn(
-                            websocket=websocket,
-                            transcript=speech_res.transcript,
-                            emotion=speech_res.emotion,
-                            language=speech_res.language,
-                            conversation_history=conversation_history,
+                        await cancel_active_llm()
+                        active_llm_task = asyncio.create_task(
+                            handle_llm_turn(
+                                websocket=websocket,
+                                transcript=speech_res.transcript,
+                                emotion=speech_res.emotion,
+                                language=speech_res.language,
+                                conversation_history=conversation_history,
+                            )
                         )
                     except Exception as e:
                         logger.error(f"Inference error on completed utterance: {e}")
@@ -333,5 +369,6 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Unexpected WebSocket error: {e}")
     finally:
-        # Clean up per-connection state
+        # Clean up per-connection state and cancel in-flight LLM stream
+        await cancel_active_llm()
         segmenter.reset()

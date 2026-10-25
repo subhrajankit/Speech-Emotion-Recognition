@@ -140,7 +140,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      "message": "Connection buffer limit (5242880 bytes) exceeded."
    }
    ```
-   Or when LLM is unreachable/timed out:
+   Or when LLM is unreachable, timed out, or in cool-down:
    ```json
    {
      "type": "error",
@@ -149,6 +149,10 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
    > **Note**: An `llm_unavailable` error keeps the WebSocket connection open so subsequent voice turns can still be transcribed.
+
+8. **Cancellation & Ordering Guarantees**:
+   - `speech_result` is always dispatched BEFORE any LLM request is started and never waits on the LLM.
+   - If the client disconnects or transmits a new `start` control frame while `llm_delta` tokens are streaming, the server immediately cancels the in-flight generation task and closes the upstream HTTP stream.
 
 ---
 

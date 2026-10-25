@@ -392,14 +392,18 @@
     Decoupled prompt engineering into a dedicated module that constructs system prompts conditioned on the user's detected emotion and spoken language. Employs a token-budget sliding window (budget=1024 tokens) that trims older history while preserving system prompt instructions.
   - **Qwen3 Thinking Mode Disabling for Voice Latency**:
     To minimize Time-To-First-Token (TTFT) for conversational voice, reasoning thinking mode is explicitly disabled in the request payload (`"chat_template_kwargs": {"enable_thinking": False}`). In addition, a streaming `ThinkingFilter` and regex cleaner strip any residual `<think>...</think>` tags before tokens reach the UI or downstream TTS.
-  - **Strict WebSocket Ordering**:
+  - **Strict WebSocket Ordering & In-Flight Stream Cancellation**:
     `speech_result` is emitted to the WebSocket client BEFORE `handle_llm_turn()` is invoked. If the LLM call succeeds, tokens stream via `llm_delta` followed by `llm_done`. If the LLM is unavailable or times out, an error event `{"type": "error", "code": "llm_unavailable"}` is emitted, and the socket remains open and responsive to subsequent speech and control frames.
+    Furthermore, in-flight LLM turns are executed as tracked `asyncio.Task` instances: if the client disconnects or transmits a new `"start"` control frame (barge-in), the task is cancelled immediately, which cleanly aborts the upstream `httpx` stream without incrementing consecutive server failure counts.
+  - **Health Check Mapping**:
+    `/api/health` maps the LLM subsystem strictly to `"ok"` or `"unavailable"` based on cached health probes without failing overall system status.
   - **Import Isolation Guarantee**:
     An automated AST scan test (`tests/backend/test_isolation.py`) asserts that neither `ai/` nor `speech_service.py` imports `llm_service`.
 - **Consequences**:
-  - Complete operational decoupling: ASR and emotion services function perfectly even if the LLM server is terminated or crashes.
-  - Zero performance degradation on perception pipelines.
-  - Full adherence to the Phase 6 specification.
+    - Complete operational decoupling: ASR and emotion services function perfectly even if the LLM server is terminated or crashes.
+    - Zero performance degradation on perception pipelines.
+    - Responsive barge-in and resource conservation upon client cancellation.
+    - Full adherence to the Phase 6 specification.
 
 ## ADR 027: Emotion Model Architecture, Speaker-Independent Split Invariant, and Decoupled SER Pipeline (Phase 5 Migration)
 - **Context**:

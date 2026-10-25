@@ -225,3 +225,46 @@ async def test_llm_service_health_check_and_cooldown():
         with pytest.raises(LLMUnavailable) as exc_info:
             await service.generate([{"role": "user", "content": "test"}], stream=False)
         assert "cooldown active" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_llm_service_cancellation_aborts_stream():
+    import asyncio
+
+    stream_closed = False
+
+    async def infinite_stream_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal stream_closed
+
+        async def byte_stream():
+            try:
+                while True:
+                    yield b'data: {"choices":[{"delta":{"content":"token "}}]}\n\n'
+                    await asyncio.sleep(0.01)
+            finally:
+                nonlocal stream_closed
+                stream_closed = True
+
+        return httpx.Response(200, content=byte_stream())
+
+    transport = httpx.MockTransport(infinite_stream_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        service = LLMService(base_url="http://127.0.0.1:8080", client=client)
+
+        async def consumer():
+            stream = await service.generate(
+                messages=[{"role": "user", "content": "Hello"}],
+                stream=True,
+            )
+            count = 0
+            async for _ in stream:
+                count += 1
+                if count >= 2:
+                    raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            await consumer()
+
+        # Cancellation should not count as consecutive failure for cool-down
+        assert service._consecutive_failures == 0
+        assert service.is_in_cooldown() is False

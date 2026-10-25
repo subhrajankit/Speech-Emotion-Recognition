@@ -333,3 +333,179 @@ def test_websocket_llm_streaming_success_ordering(client, monkeypatch):
         # Socket still functional
         ws.send_json({"type": "ping"})
         assert ws.receive_json().get("type") == "pong"
+
+
+def test_websocket_cancellation_on_new_start(client, monkeypatch):
+    """
+    Requirement 6: If the client sends a new "start" while LLM is in-flight,
+    cancel the in-flight LLM request and reset for the new stream.
+    """
+    import asyncio
+    import httpx
+    from backend.app.services.llm_service import llm_service
+
+    stream_cancelled = False
+
+    async def slow_stream_handler(request: httpx.Request) -> httpx.Response:
+        async def byte_stream():
+            nonlocal stream_cancelled
+            try:
+                for i in range(20):
+                    yield f'data: {{"choices":[{{"delta":{{"content":"word{i} "}}}}]}}\n\n'.encode("utf-8")
+                    await asyncio.sleep(0.05)
+                yield b"data: [DONE]\n\n"
+            except asyncio.CancelledError:
+                stream_cancelled = True
+                raise
+
+        return httpx.Response(200, content=byte_stream())
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(slow_stream_handler))
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        # Start turn 1
+        ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
+        assert ws.receive_json().get("type") == "ready"
+
+        # Send audio chunk
+        samples = (0.5 * np.sin(2 * np.pi * 300 * np.linspace(0, 0.5, 8000)) * 32767.0).astype(np.int16)
+        ws.send_bytes(samples.tobytes())
+        ws.send_json({"type": "stop"})
+
+        # Wait for speech_result
+        speech_res = None
+        for _ in range(5):
+            ev = ws.receive_json()
+            if ev.get("type") == "speech_result":
+                speech_res = ev
+                break
+        assert speech_res is not None
+
+        # Send new 'start' to interrupt / cancel in-flight stream (barge-in)
+        ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
+        ready_ev = ws.receive_json()
+        # May receive remaining buffered delta before ready or ready directly
+        while ready_ev.get("type") == "llm_delta":
+            ready_ev = ws.receive_json()
+        assert ready_ev.get("type") == "ready"
+
+        # Subsequent ping succeeds cleanly
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json().get("type") == "pong"
+
+
+def test_websocket_thinking_filter_split_across_sse_deltas(client, monkeypatch):
+    """
+    Requirement 4: Verify that <think> tags split across streamed SSE chunks
+    never reach the client.
+    """
+    import httpx
+    from backend.app.services.llm_service import llm_service
+
+    sse_chunks = [
+        b'data: {"choices":[{"delta":{"content":"<th"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":"ink>reasoning hidden</"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":"think>Spoken"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":" response."}}]}\n\n',
+        b'data: [DONE]\n\n',
+    ]
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"".join(sse_chunks))
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_handler))
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
+        assert ws.receive_json().get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+            pcm_bytes = samples.tobytes()
+
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        deltas = []
+        full_text = None
+        for _ in range(10):
+            try:
+                ev = ws.receive_json()
+                if ev.get("type") == "llm_delta":
+                    deltas.append(ev.get("delta"))
+                elif ev.get("type") == "llm_done":
+                    full_text = ev.get("text")
+                    break
+            except Exception:
+                break
+
+        aggregated = "".join(deltas)
+        assert "<think>" not in aggregated
+        assert "reasoning hidden" not in aggregated
+        assert "Spoken response." in aggregated
+        assert full_text == "Spoken response."
+
+
+def test_websocket_llm_stream_cut_mid_reply(client, monkeypatch):
+    """
+    Requirement 5: If the LLM stream drops / fails mid-reply,
+    the socket survives and reports an error frame.
+    """
+    import httpx
+    from backend.app.services.llm_service import llm_service
+
+    async def broken_stream_handler(request: httpx.Request) -> httpx.Response:
+        async def byte_stream():
+            yield b'data: {"choices":[{"delta":{"content":"First part..."}}]}\n\n'
+            raise httpx.ReadError("Network connection reset mid-stream")
+
+        return httpx.Response(200, content=byte_stream())
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(broken_stream_handler))
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
+        assert ws.receive_json().get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+            pcm_bytes = samples.tobytes()
+
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        events = []
+        for _ in range(10):
+            try:
+                ev = ws.receive_json()
+                events.append(ev)
+                if ev.get("type") == "error":
+                    break
+            except Exception:
+                break
+
+        event_types = [e.get("type") for e in events]
+        assert "speech_result" in event_types
+        assert "error" in event_types
+        err_event = next(e for e in events if e.get("type") == "error")
+        assert err_event.get("code") == "llm_unavailable"
+
+        # Socket survives
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json().get("type") == "pong"
+

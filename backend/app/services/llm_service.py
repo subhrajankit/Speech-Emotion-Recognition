@@ -418,6 +418,9 @@ class LLMService:
                 if remainder:
                     yield remainder
 
+        except asyncio.CancelledError:
+            logger.info("LLM stream cancelled by client request.")
+            raise
         except (httpx.ConnectError, httpx.NetworkError) as e:
             self._record_failure(e)
             raise LLMUnavailable(f"Cannot connect to local LLM server at {url}: {e}") from e

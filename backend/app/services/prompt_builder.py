@@ -100,17 +100,30 @@ class PromptBuilder:
         emotion: Optional[str] = None,
         language: Optional[str] = None,
         max_history_tokens: int = 1024,
+        grounded_context: Optional[str] = None,
+        cited_docs: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, str]]:
         """
         Builds a full chat messages payload:
         [
           {"role": "system", "content": ...},
           ...retained_history_turns,
-          {"role": "user", "content": transcript}
+          {"role": "user", "content": transcript_or_grounded_prompt}
         ]
         Applies a token budget across historical turns, keeping the most recent.
+        If grounded_context is provided, integrates knowledge excerpts and strict citation constraints.
         """
         system_prompt = cls.build_system_prompt(emotion=emotion, language=language)
+
+        if grounded_context and grounded_context.strip():
+            doc_names = ", ".join(sorted(list({d.get("doc_name", "document") for d in (cited_docs or [])})))
+            knowledge_instruction = (
+                f"\n5. Knowledge Grounding: You have been provided excerpted reference context from [{doc_names}]. "
+                "Base your response strictly and accurately on this context. "
+                "Never fabricate facts, numbers, or citations. "
+                "Cite your source naturally (e.g., 'According to [document]...')."
+            )
+            system_prompt += knowledge_instruction
 
         # Budget dedicated to historical turns
         available_budget = max(0, max_history_tokens)
@@ -135,10 +148,17 @@ class PromptBuilder:
 
             retained_history = list(reversed(temp_history))
 
+        user_content = transcript
+        if grounded_context and grounded_context.strip():
+            user_content = (
+                f"{grounded_context}\n\n"
+                f"User Question: {transcript}"
+            )
+
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": system_prompt}
         ]
         messages.extend(retained_history)
-        messages.append({"role": "user", "content": transcript})
+        messages.append({"role": "user", "content": user_content})
 
         return messages
