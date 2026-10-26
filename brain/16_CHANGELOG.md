@@ -2,6 +2,42 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 8d - Fix and Verify] - Provenance Grounding, Gate Adversarial Evaluation & Spec Rigor (2026-10-27)
+- **Legacy `src/` Tree Inventory & Proposal**:
+  - Full inventory completed: `src/` represents a pre-Phase 1 legacy architecture containing duplicate models, security, transport, and pipeline modules.
+  - Dependency analysis proves zero (`0`) imports of `src` from `backend/app/`, `ai/`, `rag/`, or `tts/`.
+  - Exactly 23 test files under `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/api/` and `tests/conftest.py` import `src.backend.*`.
+  - Diff analysis of the 4 modified files (`audit.py`, `liveness.py`, `websocket_fallback.py`, `manager.py`) confirmed additions of unrequested features (ledger hash chaining, audio anti-spoofing). Proposal submitted for user decision; no files touched.
+- **TTS Doc Provenance & Crash Telemetry**:
+  - In `docs/deployment/tts-benchmark-rtx2050.md`, all unverified rows (`scripts/measure_tts_e2e.py`, `scripts/benchmark_tts_cpu.py`) marked **NOT MEASURED**.
+  - All 8 verified WAV files on disk enumerated with `ls` byte sizes.
+  - Removed speculative explanation blaming CUDA kernel initialization.
+  - Bounded bisect re-run executed: `measure_clamped_tts.py` and direct `tts_worker.py` invocation crashed with Windows exit code `-1073741819` (`0xC0000005` access violation). Captured telemetry: Free RAM 4,351 MB / 16,474 MB, Commit charge 30,391 MB / 37,865 MB, Free Disk C: 21.32 GB, D: 107.05 GB. Documented as known issue.
+- **WebSocket Result Fields Verification**:
+  - Live server WebSocket run verified: `confidence` is strictly `None` (`null` in JSON) per Phase 1 specification.
+  - Standardized `model_version` to `"SenseVoiceSmall (funasr)"` consistent with CLI.
+  - Proved that previous 28ms/78ms reports were artifacts of mock test double injection; real neural processing on host CPU is 487ms to 1895ms per segment.
+- **SenseVoice Model Card Exact Citation**:
+  - Fetched and cited official ModelScope and FunASR GitHub README (`https://modelscope.cn/models/iic/SenseVoiceSmall`).
+  - Quoted exact statement (line 68): `"模型可以被应用于中文、粤语、英语、日语、韩语音频识别，并输出带有情感和事件的富文本转写结果。"`
+  - Cited tokenizer file: `chn_jpn_yue_eng_ko_spectok.bpe.model` (Chinese, Cantonese, English, Japanese, Korean).
+- **IndicConformer Speed, Safety & Dual Engine Test**:
+  - Fixed skip condition in `test_dual_engine_identical_schema` to detect Hugging Face cache. Verified test **PASSED** (0 failed, 6 assertions preserved).
+  - Pinned model revision commit hash `2a77d305038dfc502fd9464e7d028b90381976cb` in `backend/app/core/config.py` and `IndicConformerSpeechEngine`.
+  - Benchmarked decoding modes on target CPU (AMD Ryzen 5 7535HS, 4 threads, `CPUExecutionProvider`):
+    - `ctc` decoding: 18.17 s (RTF 3.44)
+    - `rnnt` decoding: **4.72 s** (RTF 0.89)
+    - Selected `rnnt` as production default for real-time capability.
+  - Documented plainly in docs that automatic Hindi detection is NOT implemented; Hindi strictly requires `language_hint="hi"`.
+- **Gate Evaluation Honesty & Adversarial Hard Evaluation**:
+  - Documented actual gate architecture: 2-Tier hybrid (Tier 1 regex rules, Tier 2 multilingual-e5-small cosine similarity against exemplars, Tier 3 fallback to chat).
+  - Authored second, harder evaluation dataset in `rag/hard_eval_dataset.py` (50 queries: 25 chat, 25 knowledge_query) containing distractors, short follow-ups, general knowledge, and subtle policy queries.
+  - Measured results: 94.0% accuracy (47/50), Precision (Knowledge) = 0.923, Recall = 0.960, F1 = 0.941. Precision (Chat) = 0.958, Recall = 0.920, F1 = 0.939. Documented all 3 misclassifications.
+  - Both datasets explicitly labelled: "authored by the same agent, indicative only".
+- **Audio Sample Transparency**:
+  - Explicitly disclosed in `docs/architecture/language-routing.md`, `docs/api/websocket.md`, and changelog that `tests/samples/english_speech_16k.wav` is synthetic audio generated via TTS synthesis, not human speech.
+  - Removed ungrounded "194 ms – 380 ms" TTFT claim.
+
 ## [Phase 8c - Fix and Verify] - Spec Compliance, Multi-Segment VAD Telemetry & Honest Baseline Metrics (2026-10-27)
 - **IndicConformer Spec Compliance**:
   - Reverted model ID to `ai4bharat/indic-conformer-600m-multilingual` per spec. Loaded via official Transformers `AutoModel.from_pretrained(..., trust_remote_code=True)` running via ONNX Runtime.
@@ -22,9 +58,7 @@ All notable changes across build phases are recorded here.
   - Clarified Phase 8 status: plumbing verified with test doubles; real synthesis verified standalone; full real end-to-end on this 4 GB GPU failed/crashed with access violation.
 - **Small Fixes**:
   - Normalized `EMO_UNKNOWN` to `None` (`null`) so unknown emotion never leaks into `SpeechResult.emotion`.
-  - Clarified TRD 180 ms target vs measured 194 ms – 380 ms TTFT on Qwen3-1.7B.
   - All 10 model/network tests decorated with `@pytest.mark.model`.
-  - Full test suite: 244 passed, 1 skipped, 0 failed.
 
 ## [Phase 8b - Reality Check] - Elimination of Runtime Fakes & Empirical Baseline Grounding (2026-10-26)
 - **Zero Runtime Fakes Invariant**:

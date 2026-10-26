@@ -116,10 +116,17 @@ def test_dual_engine_identical_schema():
     indic_model_dir = os.getenv("INDICCONFORMER_MODEL_DIR", "ai4bharat/indic-conformer-600m-multilingual")
     sv_model_dir = os.getenv("SENSEVOICE_MODEL_DIR", "iic/SenseVoiceSmall")
 
-    if not os.path.exists(indic_model_dir) and not indic_model_dir.startswith("ai4bharat/"):
-        pytest.skip(f"IndicConformer weights absent at '{indic_model_dir}'. Skipping real model test.")
-    if not os.path.exists(sv_model_dir) and not sv_model_dir.startswith("iic/"):
-        pytest.skip(f"SenseVoice weights absent at '{sv_model_dir}'. Skipping real model test.")
+    from pathlib import Path
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub" / "models--ai4bharat--indic-conformer-600m-multilingual"
+    ms_cache = Path.home() / ".cache" / "modelscope" / "models" / "iic--SenseVoiceSmall"
+
+    indic_present = os.path.exists(indic_model_dir) or hf_cache.exists()
+    sv_present = os.path.exists(sv_model_dir) or ms_cache.exists()
+
+    if not indic_present:
+        pytest.skip(f"IndicConformer weights absent on disk and in cache ({hf_cache}). Skipping real model test.")
+    if not sv_present:
+        pytest.skip(f"SenseVoice weights absent on disk and in cache ({ms_cache}). Skipping real model test.")
 
     from ai.preprocessing.audio import load_and_preprocess_audio
 

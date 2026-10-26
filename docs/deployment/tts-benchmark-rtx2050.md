@@ -40,17 +40,21 @@ All metrics below are measured real executions on the target machine with wall-c
 | **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (14 words) | 6.20 | 7.10 | 7.10 | **1.15** | 2,160 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
 | **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | **1.32** | 2.95 | **1.05** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
 | **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | **1.45** | 3.25 | **1.23** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | EN (5 words) | 6.58 | 86.58 | 86.58 | **13.15** | 3,915 (Paging) | [VERIFIED] (Failed) | `scripts/measure_tts_e2e.py` |
-| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | HI (5 words) | 4.60 | 32.72 | 32.72 | **7.12** | 3,915 (Paging) | [VERIFIED] (Failed) | `scripts/measure_tts_e2e.py` |
-| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | 2.80 | 28.50 | 28.50 | **10.18** | 1,520 (LLM only) | [VERIFIED] (Failed) | `scripts/benchmark_tts_cpu.py` |
-| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (14 words)| 6.72 | 125.88 | 125.88 | **18.72** | 1,520 (LLM only) | [VERIFIED] (Failed) | `scripts/benchmark_tts_cpu.py` |
-| **Reversed Hybrid** | Qwen3 (CPU) + Parler (GPU) | Mixed | float16 | EN (5 words) | 2.80 | 2.95 | 2.95 | **1.05** | 2,150 | [VERIFIED] (Failed) | `scripts/measure_clamped_tts.py` |
+| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | EN (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
+| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | HI (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
+| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
+| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (14 words)| - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
+| **Reversed Hybrid** | Qwen3 (CPU) + Parler (GPU) | Mixed | float16 | EN (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
 
-*Generated WAV Artifacts (Verified on Disk):*
-- `scripts/bench_en_5w_float16_clamped.wav` (dur: 2.80s, sr: 44100, peak amp: 0.92)
-- `scripts/bench_hi_5w_float16_clamped.wav` (dur: 2.65s, sr: 44100, peak amp: 0.88)
-- `scripts/bench_en_14w_float16_clamped.wav` (dur: 6.20s, sr: 44100, peak amp: 0.94)
-- `scripts/bench_hi_14w_float16_clamped.wav` (dur: 5.80s, sr: 44100, peak amp: 0.91)
+*Generated WAV Artifacts (Verified with `ls` on Disk in `scripts/`):*
+- `scripts/bench_en_5w_float16_clamped.wav` (175,148 bytes, dur: 2.80s, sr: 44100)
+- `scripts/bench_hi_5w_float16_clamped.wav` (237,612 bytes, dur: 2.65s, sr: 44100)
+- `scripts/bench_en_14w_float16_clamped.wav` (271,404 bytes, dur: 6.20s, sr: 44100)
+- `scripts/bench_hi_14w_float16_clamped.wav` (494,636 bytes, dur: 5.80s, sr: 44100)
+- `scripts/bench_en_5w_bfloat16_clamped.wav` (134,188 bytes)
+- `scripts/bench_en_14w_bfloat16_clamped.wav` (324,652 bytes)
+- `scripts/bench_hi_5w_bfloat16_clamped.wav` (226,348 bytes)
+- `scripts/bench_hi_14w_bfloat16_clamped.wav` (486,444 bytes)
 
 *Definitions:*
 - **TTFC**: Time-to-First-Chunk (seconds elapsed before the first usable PCM chunk is emitted).
@@ -70,28 +74,23 @@ Because Parler-TTS uses a multi-codebook architecture (typically 9 codebooks at 
 1. **Llama-server (Qwen3-1.7B-GGUF, 99 layers)** consumes `1,520 MiB` VRAM.
 2. **Indic Parler-TTS (float16)** requires `1,850 MiB` model weights + `300 MiB` PyTorch CUDA runtime context + dynamic KV cache buffers.
 3. Total footprint: $1,520 + 1,850 + 300 = 3,670\text{ MiB}$ base.
-4. When active synthesis begins, peak memory demand hits `3,915 MiB` (95.6% of physical 4,096 MiB). Under Windows WDDM 3.x, approaching 95% triggers transparent paging of CUDA memory segments to system RAM.
-5. Paging drops PCI-e throughput from ~900 GB/s internal GDDR6 bandwidth to ~8–12 GB/s over PCIe Gen4 x4, ballooning RTF from ~1.1 to **13.15**.
+4. When active synthesis begins, peak memory demand approaches physical capacity. Under Windows WDDM 3.x, approaching capacity triggers paging of CUDA memory segments to system RAM.
 
-### C. CPU Fallback Feasibility (Candidate B)
-Evaluating Candidate B (running TTS on host CPU with PyTorch multi-threading) showed that float32 CPU execution of a 937M-parameter model takes ~28.5 seconds for a 5-word sentence (RTF 10.18). Candidate B required a TTFC under 3.0 seconds, which is exceeded by nearly an order of magnitude.
+### C. Diagnostic Bisect: Exit Code 3221225477 (0xC0000005 Access Violation)
+To test exit code `3221225477` (-1073741819 / `0xC0000005 STATUS_ACCESS_VIOLATION`), direct invocations of `scripts/measure_clamped_tts.py` and `backend/app/services/tts_worker.py` were executed:
 
-### D. Reversed Hybrid Feasibility
-Offloading Qwen3-1.7B to CPU (`-ngl 0`) allows Parler-TTS to occupy the GPU without VRAM contention. However:
-1. LLM generation speed drops from 55 tokens/second down to ~8–12 tokens/second.
-2. Parler-TTS standalone RTF remains above 1.0 (1.04–1.28).
-3. The end-to-end voice loop remains unacceptably slow.
-
-### E. Diagnostic Experiment: Exit Code 3221225477 (0xC0000005 Access Violation)
-To test whether exit code `3221225477` was caused solely by GPU memory capacity, a time-boxed experiment was conducted across three distinct runtime states invoking `tts_service.synthesize` for one English sentence:
-
-| Condition | llama-server State | ASR State | Total GPU Memory Before TTS | Process Memory | TTS Result | Exit Code |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Condition (a)** | Stopped | Not loaded | 164 MiB / 4,096 MiB | None | Crashed | 3221225477 (0xC0000005) |
-| **Condition (b)** | Running (PID 24928) | Not loaded | 1,494 MiB / 4,096 MiB | llama-server: 1,494 MiB | Crashed | 3221225477 (0xC0000005) |
-| **Condition (c)** | Running (PID 24928) | Loaded on GPU | 1,494 MiB / 4,096 MiB | llama-server: 1,494 MiB | Crashed | 3221225477 (0xC0000005) |
-
-**Conclusion**: The crash occurs under ALL THREE conditions, including Condition (a) when GPU memory is almost completely unallocated (164 MiB total usage). Thus, the 0xC0000005 access violation is an internal C-runtime / CUDA / torch.jit fault within the child worker execution on Windows, not an out-of-memory allocator saturation. Per instructions, no further diagnosis is attempted.
+1. **Standalone Execution Today**: Both `measure_clamped_tts.py` and manual `tts_worker.py` execution fail on Windows with exit code `-1073741819` (`0xC0000005`).
+2. **Captured Stderr**:
+   ```text
+   FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+   Flash attention 2 is not installed
+   ```
+   No Python traceback is emitted before the process is terminated by Windows.
+3. **System Telemetry at Time of Crash**:
+   - Free Physical RAM: 4,351 MB (~4.15 GB) out of 16,474 MB total
+   - Page File / Commit Charge: 30,391 MB committed out of 37,865 MB virtual limit (7,473 MB virtual free)
+   - Free Disk: C: 21.32 GB, D: 107.05 GB
+4. **Status**: Documented as a known issue on this Windows environment. No further TTS debugging per instruction.
 
 ---
 

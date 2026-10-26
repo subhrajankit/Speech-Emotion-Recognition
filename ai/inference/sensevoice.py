@@ -119,7 +119,7 @@ class SenseVoiceSpeechEngine(SpeechEngine):
         self.model_dir = model_dir or os.getenv("SENSEVOICE_MODEL_DIR", "iic/SenseVoiceSmall")
         self.device = device or os.getenv("SENSEVOICE_DEVICE", "cpu")
         self.threads = threads or int(os.getenv("SENSEVOICE_THREADS", "4"))
-        self._model_version = f"SenseVoiceSmall ({Path(self.model_dir).name})"
+        self._model_version = "SenseVoiceSmall (funasr)"
 
         self.vad = SileroVAD(
             model_path=vad_model_path,

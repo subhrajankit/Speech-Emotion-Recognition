@@ -493,9 +493,18 @@
   2. **VAD Multi-Segment WebSocket Framing**: When continuous speech contains pauses $> 700\text{ ms}$, Silero VAD segments audio into discrete utterances. Each segment emits its own sequential `speech_result`. WebSocket clients must process multi-segment turns rather than assuming a single final result per stream.
   3. **RAG Storage Consolidation**: Eliminated duplicate directories. Retained `data/documents/` as canonical document store and `data/index/` as canonical FAISS index.
   4. **Emotion Normalization**: Normalized `EMO_UNKNOWN` to `None` (`null`) in `SpeechResult.emotion` to prevent sentinel leakage into downstream LLM prompt builders and client UIs.
+## ADR 032: Phase 8d — IndicConformer RNNT Decoding Mode, Model Revision Pinning & Gate Adversarial Grounding
+- **Context**:
+  Phase 8d required fixing the skip condition in `test_dual_engine_identical_schema`, investigating the 18-second IndicConformer latency on CPU, verifying model security on `trust_remote_code=True`, establishing truthfulness on intent router gate performance, and auditing legacy `src/` tree dependencies.
+- **Decision**:
+  1. **IndicConformer Decoding Mode**: Benchmarking on target CPU (AMD Ryzen 5 7535HS, 4 threads) showed CTC decoding took 18.17 s (RTF 3.44) whereas RNNT decoding completed in **4.72 s** (RTF 0.89) on the identical 5.28s utterance, both producing accurate Devanagari output ("आज मौसम बहुत अच्छा है"). Configured `INDICCONFORMER_DECODER_TYPE="rnnt"` as the default in `backend/app/core/config.py`.
+  2. **Security Revision Pinning**: Pinned model revision commit hash `2a77d305038dfc502fd9464e7d028b90381976cb` in `config.py` and passed to `AutoModel.from_pretrained(..., revision=...)` to mitigate remote code execution risk with `trust_remote_code=True`.
+  3. **Explicit Language Hint Invariant**: Formally documented that automatic Hindi detection is NOT implemented; Hindi ASR strictly requires `language_hint="hi"`.
+  4. **Intent Gate Adversarial Grounding**: Authored a 50-example hard evaluation dataset (`rag/hard_eval_dataset.py`) containing keyword distractors in chat, short follow-ups, and general knowledge out-of-scope queries. Measured 94.0% accuracy (47/50), documenting all 3 misclassifications and labeling both sets "authored by the same agent, indicative only".
+  5. **Audio Transparency**: Disclosed that `tests/samples/english_speech_16k.wav` is synthetic TTS audio, not human speech, and must not be used as ASR accuracy evidence.
 - **Consequences**:
-  - Full adherence to architectural specifications without unapproved substitutions.
-  - Transparent, verified performance metrics grounded in reproducible test runs.
+  - Sub-real-time (RTF < 1.0) Hindi ASR execution on host CPU without GPU memory contention.
+  - Transparent, adversarial testing without synthetic metric claims.
 
 
 

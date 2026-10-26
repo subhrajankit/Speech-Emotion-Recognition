@@ -71,6 +71,7 @@ class SpeechService:
         try:
             self._indicconformer = IndicConformerSpeechEngine(
                 model_dir=settings.INDICCONFORMER_MODEL_DIR,
+                model_revision=settings.INDICCONFORMER_REVISION,
                 device=settings.INDICCONFORMER_DEVICE,
                 decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
                 vad_threshold=settings.VAD_THRESHOLD,

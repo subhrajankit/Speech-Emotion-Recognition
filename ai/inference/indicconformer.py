@@ -51,27 +51,33 @@ class IndicConformerSpeechEngine(SpeechEngine):
         self,
         model_dir: Optional[str] = None,
         device: Optional[str] = None,
-        decoder_type: str = "ctc",
+        decoder_type: str = "rnnt",
         vad_model_path: Optional[str] = None,
         vad_threshold: Optional[float] = None,
         auto_load: bool = True,
         emotion_hook: Optional[Callable[[np.ndarray, SpeechResult], SpeechResult]] = None,
+        model_revision: Optional[str] = None,
     ):
         """
         Initializes IndicConformer engine.
 
         Args:
-            model_dir: Checkpoint path or HuggingFace ID (e.g. 'ai4bharat/indicconformer_stt_indic_hybrid_ctc_large').
+            model_dir: Checkpoint path or HuggingFace ID.
             device: Compute device ('cpu' or 'cuda').
-            decoder_type: Decoding mode ('ctc' or 'rnnt').
+            decoder_type: Decoding mode ('ctc' or 'rnnt'). Default is 'rnnt' for low CPU latency.
             vad_model_path: Optional path to Silero VAD ONNX model.
             vad_threshold: Speech detection probability threshold.
             auto_load: If True, loads model immediately.
             emotion_hook: Optional hook for Phase 5 SER to attach emotion to result.
+            model_revision: Pinned git commit hash revision on Hugging Face hub.
         """
         self.model_dir = model_dir or os.getenv(
             "INDICCONFORMER_MODEL_DIR",
             "ai4bharat/indic-conformer-600m-multilingual"
+        )
+        self.model_revision = model_revision or os.getenv(
+            "INDICCONFORMER_REVISION",
+            "2a77d305038dfc502fd9464e7d028b90381976cb"
         )
         self.device = device or os.getenv("INDICCONFORMER_DEVICE", "cpu")
         self.decoder_type = decoder_type or os.getenv("INDICCONFORMER_DECODER_TYPE", "rnnt")
@@ -116,8 +122,12 @@ class IndicConformerSpeechEngine(SpeechEngine):
 
         logger.info(f"Loading IndicConformer-600m from '{self.model_dir}' on {self.device} (mode={self.decoder_type})...")
         try:
-            # Official model card loading convention
-            self.model = AutoModel.from_pretrained(self.model_dir, trust_remote_code=True)
+            # Official model card loading convention with pinned revision
+            self.model = AutoModel.from_pretrained(
+                self.model_dir,
+                revision=self.model_revision,
+                trust_remote_code=True
+            )
             if hasattr(self.model, "to"):
                 try:
                     self.model.to(self.device)

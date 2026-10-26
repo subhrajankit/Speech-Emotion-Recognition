@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     SENSEVOICE_DEVICE: str = "cpu"
     SENSEVOICE_THREADS: int = 4
     INDICCONFORMER_MODEL_DIR: str = "ai4bharat/indic-conformer-600m-multilingual"
+    INDICCONFORMER_REVISION: str = "2a77d305038dfc502fd9464e7d028b90381976cb"
     INDICCONFORMER_DEVICE: str = "cpu"
     INDICCONFORMER_DECODER_TYPE: str = "rnnt"
     LID_CONFIDENCE_THRESHOLD: float = 0.6

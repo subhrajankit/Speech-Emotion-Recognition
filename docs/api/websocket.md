@@ -117,7 +117,8 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      }
    }
    ```
-   *(Note: Real SenseVoiceSmall neural processing time measured in Phase 8b is ~480 ms – 990 ms on CPU/GPU. Previous benchmark figures citing 23 ms were produced by test mock injection and are INVALID.)*
+   *(Note: Real SenseVoiceSmall neural processing time measured in Phase 8b is ~480 ms – 990 ms on CPU/GPU. Previous benchmark figures citing 23 ms or 28 ms were produced by test mock injection and are INVALID. Per Phase 1 spec, confidence is null unless the neural model produces calibrated posterior probabilities.)*
+   *(Audio Sample Disclosure: `tests/samples/english_speech_16k.wav` is synthetic audio generated via TTS synthesis, not human speech. It is used strictly for stream protocol regression testing, never as evidence of human ASR accuracy.)*
 
    **Multi-segment VAD Segmentation & Streaming Semantics**:
    - If the user speaks multiple phrases separated by pauses longer than the VAD silence threshold (`silence_timeout_ms = 700ms`), or if un-transcribed audio is flushed at connection close / `stop` frame, the VAD segmenter splits the input stream into distinct utterances.
