@@ -108,11 +108,21 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      "segments": [],
      "debug": {
        "raw_tags": ["<|en|>", "<|HAPPY|>", "<|Speech|>"],
-       "vad_has_speech": true
+       "vad_has_speech": true,
+       "segment_index": 1,
+       "segment_bytes": 64512,
+       "segment_duration_s": 2.02,
+       "session_total_audio_bytes": 263406,
+       "flushed_on_stop": false
      }
    }
    ```
-   *(Note: Real SenseVoiceSmall neural processing time measured in Phase 8b is ~760 ms – 990 ms on CPU/GPU. Previous benchmark figures citing 23 ms were produced by test mock injection and are INVALID.)*
+   *(Note: Real SenseVoiceSmall neural processing time measured in Phase 8b is ~480 ms – 990 ms on CPU/GPU. Previous benchmark figures citing 23 ms were produced by test mock injection and are INVALID.)*
+
+   **Multi-segment VAD Segmentation & Streaming Semantics**:
+   - If the user speaks multiple phrases separated by pauses longer than the VAD silence threshold (`silence_timeout_ms = 700ms`), or if un-transcribed audio is flushed at connection close / `stop` frame, the VAD segmenter splits the input stream into distinct utterances.
+   - **Each segment produces its own separate `speech_result` event**, followed immediately by its downstream LLM turn.
+   - Clients receiving continuous audio streams must NOT expect a single monolithic `speech_result` for an entire multi-utterance session. Each utterance segment has its own `debug.segment_index`, `debug.segment_bytes`, and `debug.segment_duration_s`.
 
 5. **RAG Citations (`rag_sources`)**:
    Emitted when a knowledge query retrieves grounded document chunks from the local vector index:

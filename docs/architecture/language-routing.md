@@ -70,20 +70,29 @@ The decision logic in `ai/routing/language_router.py` enforces a deterministic 3
 
 ## 3. Model Card Citations & Scope
 
-### A. SenseVoiceSmall Language Limitations
+### A. SenseVoiceSmall Language Scope
 - **Citation**: Alibaba FunASR / DAMO Academy, *"SenseVoice: An End-to-End Speech Recognition Model for Rich Transcription"*, 2024. Hugging Face: `FunAudioLLM/SenseVoiceSmall`, ModelScope: `iic/SenseVoiceSmall`.
-- **Supported Languages**: Chinese (`zh`), Cantonese (`yue`), English (`en`), Japanese (`ja`), Korean (`ko`).
-- **Hindi Support**: **NONE**. The vocabulary and model weights do not include Hindi or Devanagari script. Any claim that SenseVoiceSmall natively supports Hindi is technically invalid.
+- **Supported Languages (per Model Card)**:
+  - Chinese (`zh`)
+  - Cantonese (`yue`)
+  - English (`en`)
+  - Japanese (`ja`)
+  - Korean (`ko`)
+  SenseVoiceSmall is trained and evaluated specifically on these 5 languages. Indic languages are outside its design scope and are routed to dedicated Indic recognition engines.
 
-### B. AI4Bharat IndicConformer-600m
+### B. AI4Bharat IndicConformer-600m Multilingual
 - **Citation**: AI4Bharat IndicSUPERB / IndicConformer: Kumar et al. (2022/2023); *"Towards Building Open-Domain Speech Systems for 22 Indian Languages"*, Interspeech 2022.
-- **Hugging Face Model**: `ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large` / `ai4bharat/indicconformer_stt_indic_hybrid_ctc_large`.
-- **Phase 8b Invalidation & Gated Status [VERIFIED]**: The Hugging Face checkpoint `ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large` is a gated repository. Live access without approved organization permissions returns HTTP `403 Forbidden`. Any Phase 4 benchmark figures alleging live execution without authenticated credentials were mock-derived and are INVALID. When weights are gated or unavailable, the language router gracefully falls back to SenseVoice without crashing.
-- **Loading Mechanism**: Built using NVIDIA NeMo toolkit (`nemo.collections.asr.models.EncDecCTCModelBPE`). Restored via `EncDecCTCModelBPE.from_pretrained(...)` or `.restore_from(...)`.
+- **Hugging Face Model**: `ai4bharat/indic-conformer-600m-multilingual` (License: MIT).
+- **Supported Languages**: IN-22 (22 officially recognized Indian languages: `as`, `bn`, `brx`, `doi`, `gu`, `hi`, `kn`, `kok`, `ks`, `mai`, `ml`, `mni`, `mr`, `ne`, `or`, `pa`, `sa`, `sat`, `sd`, `ta`, `te`, `ur`).
+- **Loading Mechanism**: Loaded directly via Hugging Face Transformers per official model card:
+  ```python
+  from transformers import AutoModel
+  model = AutoModel.from_pretrained("ai4bharat/indic-conformer-600m-multilingual", trust_remote_code=True)
+  ```
 - **Decoding Modes**:
-  - `ctc` (Connectionist Temporal Classification): Non-autoregressive, fast streaming, lower CPU latency.
-  - `rnnt` (Recurrent Neural Network Transducer): Autoregressive joint network, lower conversational WER, higher compute overhead.
-- **Language Code Argument**: Specified in transcription requests via `language_id` (e.g. `language_id="hi"`).
+  - `ctc` (Connectionist Temporal Classification): `model(wav, "hi", "ctc")`
+  - `rnnt` (Recurrent Neural Network Transducer): `model(wav, "hi", "rnnt")`
+- **Language Code Argument**: Specified in transcription requests via ISO code (e.g. `hi`).
 
 ---
 

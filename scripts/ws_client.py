@@ -28,12 +28,8 @@ async def receive_events(ws, stop_event: asyncio.Event, wait_for_tts: bool = Fal
                     event_type = event.get("type", "unknown")
                     print(f"\n[SERVER EVENT: {event_type.upper()}]")
                     print(json.dumps(event, indent=2))
-                    if wait_for_tts:
-                        if event_type in ("tts_done", "error"):
-                            stop_event.set()
-                    else:
-                        if event_type in ("llm_done", "tts_done", "error"):
-                            stop_event.set()
+                    if event_type == "error":
+                        stop_event.set()
                 except json.JSONDecodeError:
                     print(f"\n[SERVER TEXT] {message}")
             else:
@@ -122,14 +118,17 @@ async def stream_wav(
         stop_msg = {"type": "stop"}
         await ws.send(json.dumps(stop_msg))
 
-        # 4. Wait for speech_result event or timeout
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            logger.warning("Timed out waiting for speech_result event.")
+        # 4. Wait for responses to settle after stop
+        logger.info(f"Waiting up to {timeout}s for server processing and final turn to complete...")
+        # Wait a few seconds to let VAD flush, ASR, and LLM complete
+        wait_start = time.time()
+        while time.time() - wait_start < timeout:
+            if stop_event.is_set():
+                break
+            await asyncio.sleep(0.5)
 
         # Brief delay to allow socket buffer completion
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1.0)
 
         # Cleanup
         recv_task.cancel()

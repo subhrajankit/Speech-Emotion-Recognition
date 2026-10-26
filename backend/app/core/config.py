@@ -60,9 +60,9 @@ class Settings(BaseSettings):
     SENSEVOICE_MODEL_DIR: str = "iic/SenseVoiceSmall"
     SENSEVOICE_DEVICE: str = "cpu"
     SENSEVOICE_THREADS: int = 4
-    INDICCONFORMER_MODEL_DIR: str = "ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large"
+    INDICCONFORMER_MODEL_DIR: str = "ai4bharat/indic-conformer-600m-multilingual"
     INDICCONFORMER_DEVICE: str = "cpu"
-    INDICCONFORMER_DECODER_TYPE: str = "ctc"
+    INDICCONFORMER_DECODER_TYPE: str = "rnnt"
     LID_CONFIDENCE_THRESHOLD: float = 0.6
     LAZY_LOAD_MODELS: bool = True
 

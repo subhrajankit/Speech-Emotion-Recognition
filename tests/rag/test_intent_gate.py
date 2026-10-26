@@ -9,6 +9,8 @@ from rag.eval_dataset import EVALUATION_DATASET
 from rag.intent_router import IntentRouter
 from rag.embeddings import MultilingualE5Embeddings
 
+pytestmark = pytest.mark.model
+
 
 def evaluate_gate():
     """

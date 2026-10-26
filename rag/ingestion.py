@@ -25,8 +25,8 @@ logger = logging.getLogger("rag.ingestion")
 
 
 def run_ingestion(
-    docs_dir: str = "rag/documents",
-    index_dir: str = "rag/vectorstore",
+    docs_dir: str = "data/documents",
+    index_dir: str = "data/index",
     chunk_size: int = 500,
     chunk_overlap: int = 100,
     model_id: str = DEFAULT_MODEL_ID,
@@ -112,8 +112,8 @@ def run_ingestion(
 
 def main():
     parser = argparse.ArgumentParser(description="Ingest documents and build FAISS vector index.")
-    parser.add_argument("--docs", default="rag/documents", help="Path to input documents directory.")
-    parser.add_argument("--index-dir", default="rag/vectorstore", help="Path to output vectorstore directory.")
+    parser.add_argument("--docs", default="data/documents", help="Path to input documents directory.")
+    parser.add_argument("--index-dir", default="data/index", help="Path to output vectorstore directory.")
     parser.add_argument("--chunk-size", type=int, default=500, help="Max chunk size in characters.")
     parser.add_argument("--chunk-overlap", type=int, default=100, help="Overlap size in characters.")
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="Embedding model ID.")

@@ -106,12 +106,14 @@ def test_dual_engine_identical_schema():
         pytest.skip(f"PyTorch not installed ({e}). Skipping real model test.")
 
     hindi_wav = "tests/samples/sample_hindi_speech.wav"
-    english_wav = "tests/speech_sample.wav"
+    english_wav = "tests/samples/english_speech_16k.wav"
 
     if not os.path.exists(hindi_wav):
         pytest.skip(f"Hindi audio sample absent at '{hindi_wav}'. Skipping dual model test.")
+    if not os.path.exists(english_wav):
+        pytest.skip(f"English audio sample absent at '{english_wav}'. Skipping dual model test.")
 
-    indic_model_dir = os.getenv("INDICCONFORMER_MODEL_DIR", "ai4bharat/indicconformer_stt_indic_hybrid_ctc_large")
+    indic_model_dir = os.getenv("INDICCONFORMER_MODEL_DIR", "ai4bharat/indic-conformer-600m-multilingual")
     sv_model_dir = os.getenv("SENSEVOICE_MODEL_DIR", "iic/SenseVoiceSmall")
 
     if not os.path.exists(indic_model_dir) and not indic_model_dir.startswith("ai4bharat/"):
@@ -121,7 +123,7 @@ def test_dual_engine_identical_schema():
 
     from ai.preprocessing.audio import load_and_preprocess_audio
 
-    # 1. IndicConformer transcription
+    # 1. IndicConformer real transcription
     try:
         indic_engine = IndicConformerSpeechEngine(model_dir=indic_model_dir, device="cpu", auto_load=True)
         hindi_audio = load_and_preprocess_audio(hindi_wav)
@@ -129,7 +131,7 @@ def test_dual_engine_identical_schema():
     except Exception as e:
         pytest.skip(f"IndicConformer could not be loaded or executed: {e}")
 
-    # 2. SenseVoice transcription
+    # 2. SenseVoice real transcription
     try:
         sv_engine = SenseVoiceSpeechEngine(model_dir=sv_model_dir, device="cpu", auto_load=True)
         english_audio = load_and_preprocess_audio(english_wav)
@@ -137,9 +139,10 @@ def test_dual_engine_identical_schema():
     except Exception as e:
         pytest.skip(f"SenseVoice could not be loaded or executed: {e}")
 
-    # 3. Assert identical schema
+    # 3. Assert identical schema and expected properties
     assert isinstance(indic_res, SpeechResult)
     assert isinstance(sv_res, SpeechResult)
     assert indic_res.language == "hi"
     assert indic_res.emotion is None  # Architecture invariant
+    assert "मौसम" in indic_res.transcript  # Real Hindi transcription verification
     assert set(indic_res.model_dump().keys()) == set(sv_res.model_dump().keys())

@@ -29,6 +29,16 @@ class SpeechResult(BaseModel):
         default=None,
         description="Normalized primary emotion label (e.g. 'happy', 'sad', 'angry', 'neutral', 'fearful', 'disgusted', 'surprised') or None."
     )
+
+    @field_validator("emotion", mode="before")
+    @classmethod
+    def normalize_emotion(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v_clean = str(v).strip().strip("<|>").lower()
+        if v_clean in ("emo_unknown", "unknown", "unk", "none", "null", ""):
+            return None
+        return v_clean
     confidence: Optional[float] = Field(
         default=None,
         ge=0.0,

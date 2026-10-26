@@ -13,7 +13,7 @@ def main():
     embedder = MultilingualE5Embeddings()
     router = IntentRouter(embedder=embedder)
     vectorstore = FAISSVectorStore()
-    vectorstore.load("rag/vectorstore")
+    vectorstore.load("data/index")
 
     knowledge_queries = [
         "What is the company policy on remote work?",

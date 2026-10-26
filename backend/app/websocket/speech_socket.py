@@ -260,6 +260,8 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     )
 
     total_accumulated_bytes = 0
+    session_total_audio_bytes = 0
+    vad_segment_count = 0
     was_in_speech = False
 
     try:
@@ -296,6 +298,8 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                     segmenter.sample_rate = sample_rate
                     segmenter.reset()
                     total_accumulated_bytes = 0
+                    session_total_audio_bytes = 0
+                    vad_segment_count = 0
                     is_started = True
                     was_in_speech = False
 
@@ -316,15 +320,25 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         was_in_speech = False
 
                     if flushed_audio and len(flushed_audio) >= 1024:
+                        vad_segment_count += 1
                         try:
                             speech_res = await speech_service.transcribe_pcm16_bytes(
                                 pcm_bytes=flushed_audio,
                                 sample_rate=sample_rate,
                                 language_hint=language_hint
                             )
+                            speech_payload = speech_res.model_dump()
+                            speech_payload["debug"] = speech_payload.get("debug") or {}
+                            speech_payload["debug"].update({
+                                "segment_index": vad_segment_count,
+                                "segment_bytes": len(flushed_audio),
+                                "segment_duration_s": round(len(flushed_audio) / (sample_rate * 2), 2),
+                                "session_total_audio_bytes": session_total_audio_bytes,
+                                "flushed_on_stop": True,
+                            })
                             await safe_send_json(websocket, {
                                 "type": "speech_result",
-                                **speech_res.model_dump()
+                                **speech_payload
                             })
                             await cancel_active_llm()
                             active_llm_task = asyncio.create_task(
@@ -368,6 +382,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
 
                 # Enforce per-connection buffer limits
                 total_accumulated_bytes += len(chunk)
+                session_total_audio_bytes += len(chunk)
                 if total_accumulated_bytes > settings.WS_MAX_BUFFER_BYTES:
                     await websocket.send_json({
                         "type": "error",
@@ -400,6 +415,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         was_in_speech = False
 
                     total_accumulated_bytes = 0
+                    vad_segment_count += 1
 
                     # Run inference off the event loop
                     try:
@@ -408,9 +424,18 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             sample_rate=sample_rate,
                             language_hint=language_hint
                         )
+                        speech_payload = speech_res.model_dump()
+                        speech_payload["debug"] = speech_payload.get("debug") or {}
+                        speech_payload["debug"].update({
+                            "segment_index": vad_segment_count,
+                            "segment_bytes": len(completed_utterance),
+                            "segment_duration_s": round(len(completed_utterance) / (sample_rate * 2), 2),
+                            "session_total_audio_bytes": session_total_audio_bytes,
+                            "flushed_on_stop": False,
+                        })
                         await websocket.send_json({
                             "type": "speech_result",
-                            **speech_res.model_dump()
+                            **speech_payload
                         })
                         await cancel_active_llm()
                         active_llm_task = asyncio.create_task(

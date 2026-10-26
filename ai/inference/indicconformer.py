@@ -71,10 +71,10 @@ class IndicConformerSpeechEngine(SpeechEngine):
         """
         self.model_dir = model_dir or os.getenv(
             "INDICCONFORMER_MODEL_DIR",
-            "ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large"
+            "ai4bharat/indic-conformer-600m-multilingual"
         )
         self.device = device or os.getenv("INDICCONFORMER_DEVICE", "cpu")
-        self.decoder_type = decoder_type or os.getenv("INDICCONFORMER_DECODER_TYPE", "ctc")
+        self.decoder_type = decoder_type or os.getenv("INDICCONFORMER_DECODER_TYPE", "rnnt")
         self._model_version = f"IndicConformer-600m ({Path(self.model_dir).name})"
 
         self.vad = SileroVAD(
@@ -94,7 +94,8 @@ class IndicConformerSpeechEngine(SpeechEngine):
 
     def _load_model(self):
         """
-        Loads the IndicConformer model using NVIDIA NeMo.
+        Loads the IndicConformer-600m model using transformers AutoModel per official model card:
+        AutoModel.from_pretrained("ai4bharat/indic-conformer-600m-multilingual", trust_remote_code=True)
         Raises clear, actionable RuntimeError if dependencies or weights are absent.
         """
         try:
@@ -106,36 +107,32 @@ class IndicConformerSpeechEngine(SpeechEngine):
             )
 
         try:
-            import nemo.collections.asr as nemo_asr
+            from transformers import AutoModel
         except ImportError:
             raise RuntimeError(
-                "NVIDIA NeMo toolkit is not installed in the current Python environment. "
-                "Please install nemo_toolkit[asr] to run IndicConformer-600m inference."
+                "Transformers is not installed in the current Python environment. "
+                "Please install transformers to run IndicConformer-600m inference."
             )
 
         logger.info(f"Loading IndicConformer-600m from '{self.model_dir}' on {self.device} (mode={self.decoder_type})...")
         try:
-            # If local file exists, restore from local checkpoint, otherwise from pretrained
-            if os.path.isfile(self.model_dir):
-                self.model = nemo_asr.models.EncDecCTCModelBPE.restore_from(self.model_dir)
-            else:
-                self.model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(self.model_dir)
-
+            # Official model card loading convention
+            self.model = AutoModel.from_pretrained(self.model_dir, trust_remote_code=True)
             if hasattr(self.model, "to"):
-                self.model.to(self.device)
+                try:
+                    self.model.to(self.device)
+                except Exception as e:
+                    logger.warning(f"Could not move model to {self.device} ({e}), running on default device.")
+
             if hasattr(self.model, "eval"):
                 self.model.eval()
-
-            # Set decoding strategy if supported by hybrid model
-            if hasattr(self.model, "change_decoding_strategy"):
-                self.model.change_decoding_strategy(decoder_type=self.decoder_type)
 
             self.is_loaded = True
             logger.info("IndicConformer-600m model loaded successfully.")
         except Exception as e:
             raise RuntimeError(
                 f"Failed to load IndicConformer model from '{self.model_dir}' ({e}). "
-                f"Ensure weights exist at the configured path or set INDICCONFORMER_MODEL_DIR correctly."
+                f"Ensure internet connectivity or approved access token, or set INDICCONFORMER_MODEL_DIR correctly."
             ) from e
 
     def transcribe(
@@ -206,18 +203,29 @@ class IndicConformerSpeechEngine(SpeechEngine):
             audio_tensor = torch.from_numpy(audio_input).unsqueeze(0).to(self.device)
             audio_len = torch.tensor([len(audio_input)], device=self.device)
 
-            # NeMo transcription with language code argument
-            # In NeMo IndicConformer, transcribe accepts language_id or target_lang in kwargs
+            # Model inference: call model per official model card API: model(wav, target_lang, decoder_type)
             with torch.no_grad():
-                hypotheses = self.model.transcribe(
-                    audio=audio_tensor,
-                    length=audio_len,
-                    language_id=target_lang
-                )
+                if callable(self.model):
+                    try:
+                        out = self.model(audio_tensor, target_lang, self.decoder_type)
+                    except TypeError:
+                        # Fallback if model expects different args or transcribe method
+                        if hasattr(self.model, "transcribe"):
+                            out = self.model.transcribe(audio=audio_tensor, length=audio_len, language_id=target_lang)
+                        else:
+                            out = self.model(audio_tensor)
+                elif hasattr(self.model, "transcribe"):
+                    out = self.model.transcribe(audio=audio_tensor, length=audio_len, language_id=target_lang)
+                else:
+                    raise RuntimeError("Loaded IndicConformer model is not callable and has no transcribe method.")
 
             transcript = ""
-            if hypotheses and len(hypotheses) > 0:
-                transcript = hypotheses[0] if isinstance(hypotheses[0], str) else hypotheses[0].text
+            if isinstance(out, str):
+                transcript = out
+            elif isinstance(out, (list, tuple)) and len(out) > 0:
+                transcript = out[0] if isinstance(out[0], str) else getattr(out[0], "text", str(out[0]))
+            elif out is not None:
+                transcript = getattr(out, "text", str(out))
 
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             result = SpeechResult(

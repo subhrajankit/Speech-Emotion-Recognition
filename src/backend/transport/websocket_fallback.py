@@ -51,8 +51,6 @@ async def websocket_voice_endpoint(websocket: WebSocket, pipeline: Optional[Voic
             session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
     await websocket.accept()
-    if settings.REQUIRE_AUTH:
-        await websocket.send_json({"type": "session_ready", "session_id": session_id})
 
     conversation_id = f"conv_{session_id}"
     session_llm_provider = websocket.query_params.get("llm_provider")

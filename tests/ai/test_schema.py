@@ -78,3 +78,16 @@ def test_speech_result_json_serialization():
     assert '"emotion":"neutral"' in json_str
     assert '"confidence":null' in json_str
     assert '"audio_events":["Speech","BGM"]' in json_str
+
+
+def test_speech_result_normalizes_emo_unknown_to_none():
+    """Verify that EMO_UNKNOWN and unknown variants normalize to None (null)."""
+    for raw_val in ["EMO_UNKNOWN", "<|EMO_UNKNOWN|>", "unknown", "UNK", "<|UNK|>", "None", ""]:
+        res = SpeechResult(
+            transcript="Testing normalization",
+            language="en",
+            emotion=raw_val,
+            processing_time_ms=50,
+            model_version="test"
+        )
+        assert res.emotion is None, f"Expected None for raw emotion {raw_val}, got {res.emotion}"

@@ -35,7 +35,7 @@ class RAGService:
 
     def __init__(
         self,
-        index_dir: str = "rag/vectorstore",
+        index_dir: str = "data/index",
         model_id: str = DEFAULT_MODEL_ID,
         similarity_threshold: float = 0.70,
     ):

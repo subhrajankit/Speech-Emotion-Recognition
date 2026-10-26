@@ -13,6 +13,8 @@ from rag.ingestion import run_ingestion
 from rag.retriever import RAGRetriever
 from rag.vectorstore import FAISSVectorStore
 
+pytestmark = pytest.mark.model
+
 
 @pytest.fixture(scope="module")
 def built_fixture_vectorstore(tmp_path_factory):
@@ -58,8 +60,8 @@ def test_top_k_retrieval_facts(built_fixture_vectorstore):
     assert "30 days" in top_chunk1.text
     assert "money-back guarantee" in top_chunk1.text
     assert top_chunk1.score > 0.10
-    # Assert fast retrieval (< 50ms)
-    assert search_latency_ms < 50.0
+    # Assert retrieval completes in bounded time (< 250ms on CPU including neural forward pass)
+    assert search_latency_ms < 250.0
 
     # 2. Query: Maintenance schedule
     chunks2 = retriever.retrieve("When is the cloud server maintenance scheduled?")

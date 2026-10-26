@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 from rag.embeddings import MultilingualE5Embeddings, EMBEDDING_DIMENSION
 
+pytestmark = pytest.mark.model
+
 
 def test_embedding_dimensions_and_types():
     embedder = MultilingualE5Embeddings()

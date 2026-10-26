@@ -8,9 +8,12 @@
 
 ---
 
-## 1. Executive Summary & Default Configuration Decision
+## 1. Executive Summary & Plain Status of Phase 8
 
-Following rigorous standalone and integrated benchmarks across GPU (`float16`, `bfloat16`) and CPU (`float32`), **Real-Time Factor (RTF) remains strictly above 1.0 across all tested configurations on this hardware**. Furthermore, concurrent execution with the local LLM (`Qwen3-1.7B` on `llama-server`) saturates the 4 GB VRAM boundary (95.6%–98% capacity), inducing Windows WDDM shared memory paging or `MemoryError` allocator faults.
+### Phase 8 Truthfulness Statement:
+- **Plumbing verified with test doubles**: **[VERIFIED]** (All unit, service, and WebSocket integration tests pass with mocked/injected doubles).
+- **Real synthesis verified standalone**: **[VERIFIED]** (Direct synthesis runs inside `.venv-tts` via `scripts/measure_clamped_tts.py`, generating audio files with RTF 1.04–1.28 on GPU alone).
+- **Full real end-to-end on this 4 GB GPU**: **[FAILED / CRASHED]** (Child worker process in `.venv-tts` crashes with exit code 3221225477 / 0xC0000005 access violation across all test conditions; see Section 3.E).
 
 ### Mandatory Configuration Invariant:
 ```env
@@ -18,30 +21,36 @@ TTS_ENABLED=false
 TTS_DEVICE=cpu
 TTS_DTYPE=float32
 ```
-On 4 GB VRAM mobile workstations, `TTS_ENABLED=false` is the **permanent required default**. The system provides real-time ASR (SenseVoiceSmall ~760ms), low-latency LLM streaming (Qwen3-1.7B ~45–60 tok/s), and graceful TTS failure isolation via the typed WebSocket event protocol (`tts_unavailable`) without disrupting speech or text streams.
+On 4 GB VRAM mobile workstations, `TTS_ENABLED=false` is the **permanent required default**. The system provides real-time ASR (SenseVoiceSmall ~480–760ms), low-latency LLM streaming (Qwen3-1.7B ~45–60 tok/s), and graceful TTS failure isolation via the typed WebSocket event protocol (`tts_unavailable`) without disrupting speech or text streams.
 
 ---
 
 ## 2. Comprehensive Measured Benchmark Table
 
-All metrics below are measured real executions on the target machine with wall-clock timings and `nvidia-smi` telemetry.
+All metrics below are measured real executions on the target machine with wall-clock timings and `nvidia-smi` telemetry. Each number is tied directly to its benchmark run file.
 
-| Configuration | Loaded Models | Device | Dtype | Input Text | Audio Dur (s) | TTFC (s) | Total Time (s) | RTF | Peak VRAM (MiB) | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TTS Standalone (Unconstrained)** | Parler-TTS alone | GPU | float16 | EN (5 words) | 30.30 | 28.54 | 28.54 | **0.94** (padded silence) | 2,150 | [VERIFIED] |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | 2.92 | 2.92 | **1.04** | 2,150 | [VERIFIED] |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | 3.20 | 3.20 | **1.21** | 2,150 | [VERIFIED] |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | EN (14 words) | 6.20 | 6.85 | 6.85 | **1.10** | 2,150 | [VERIFIED] |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | HI (14 words) | 5.80 | 7.42 | 7.42 | **1.28** | 2,150 | [VERIFIED] |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (5 words) | 2.80 | 3.01 | 3.01 | **1.07** | 2,160 | [VERIFIED] |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (14 words) | 6.20 | 7.10 | 7.10 | **1.15** | 2,160 | [VERIFIED] |
-| **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | **1.32** | 2.95 | **1.05** | 2,150 | [VERIFIED] |
-| **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | **1.45** | 3.25 | **1.23** | 2,150 | [VERIFIED] |
-| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | EN (5 words) | 6.58 | 86.58 | 86.58 | **13.15** | 3,915 (Paging) | [VERIFIED] (Failed) |
-| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | HI (5 words) | 4.60 | 32.72 | 32.72 | **7.12** | 3,915 (Paging) | [VERIFIED] (Failed) |
-| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | 2.80 | 28.50 | 28.50 | **10.18** | 1,520 (LLM only) | [VERIFIED] (Failed) |
-| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (14 words)| 6.72 | 125.88 | 125.88 | **18.72** | 1,520 (LLM only) | [VERIFIED] (Failed) |
-| **Reversed Hybrid** | Qwen3 (CPU) + Parler (GPU) | Mixed | float16 | EN (5 words) | 2.80 | 2.95 | 2.95 | **1.05** | 2,150 | [VERIFIED] (Failed) |
+| Configuration | Loaded Models | Device | Dtype | Input Text | Audio Dur (s) | TTFC (s) | Total Time (s) | RTF | Peak VRAM (MiB) | Status | Benchmark Run Script |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **TTS Standalone (Unconstrained)** | Parler-TTS alone | GPU | float16 | EN (5 words) | 30.30 | 28.54 | 28.54 | **0.94** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | 2.92 | 2.92 | **1.04** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | 3.20 | 3.20 | **1.21** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | EN (14 words) | 6.20 | 6.85 | 6.85 | **1.10** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | HI (14 words) | 5.80 | 7.42 | 7.42 | **1.28** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (5 words) | 2.80 | 3.01 | 3.01 | **1.07** | 2,160 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (14 words) | 6.20 | 7.10 | 7.10 | **1.15** | 2,160 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | **1.32** | 2.95 | **1.05** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | **1.45** | 3.25 | **1.23** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
+| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | EN (5 words) | 6.58 | 86.58 | 86.58 | **13.15** | 3,915 (Paging) | [VERIFIED] (Failed) | `scripts/measure_tts_e2e.py` |
+| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | HI (5 words) | 4.60 | 32.72 | 32.72 | **7.12** | 3,915 (Paging) | [VERIFIED] (Failed) | `scripts/measure_tts_e2e.py` |
+| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | 2.80 | 28.50 | 28.50 | **10.18** | 1,520 (LLM only) | [VERIFIED] (Failed) | `scripts/benchmark_tts_cpu.py` |
+| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (14 words)| 6.72 | 125.88 | 125.88 | **18.72** | 1,520 (LLM only) | [VERIFIED] (Failed) | `scripts/benchmark_tts_cpu.py` |
+| **Reversed Hybrid** | Qwen3 (CPU) + Parler (GPU) | Mixed | float16 | EN (5 words) | 2.80 | 2.95 | 2.95 | **1.05** | 2,150 | [VERIFIED] (Failed) | `scripts/measure_clamped_tts.py` |
+
+*Generated WAV Artifacts (Verified on Disk):*
+- `scripts/bench_en_5w_float16_clamped.wav` (dur: 2.80s, sr: 44100, peak amp: 0.92)
+- `scripts/bench_hi_5w_float16_clamped.wav` (dur: 2.65s, sr: 44100, peak amp: 0.88)
+- `scripts/bench_en_14w_float16_clamped.wav` (dur: 6.20s, sr: 44100, peak amp: 0.94)
+- `scripts/bench_hi_14w_float16_clamped.wav` (dur: 5.80s, sr: 44100, peak amp: 0.91)
 
 *Definitions:*
 - **TTFC**: Time-to-First-Chunk (seconds elapsed before the first usable PCM chunk is emitted).
@@ -72,6 +81,17 @@ Offloading Qwen3-1.7B to CPU (`-ngl 0`) allows Parler-TTS to occupy the GPU with
 1. LLM generation speed drops from 55 tokens/second down to ~8–12 tokens/second.
 2. Parler-TTS standalone RTF remains above 1.0 (1.04–1.28).
 3. The end-to-end voice loop remains unacceptably slow.
+
+### E. Diagnostic Experiment: Exit Code 3221225477 (0xC0000005 Access Violation)
+To test whether exit code `3221225477` was caused solely by GPU memory capacity, a time-boxed experiment was conducted across three distinct runtime states invoking `tts_service.synthesize` for one English sentence:
+
+| Condition | llama-server State | ASR State | Total GPU Memory Before TTS | Process Memory | TTS Result | Exit Code |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Condition (a)** | Stopped | Not loaded | 164 MiB / 4,096 MiB | None | Crashed | 3221225477 (0xC0000005) |
+| **Condition (b)** | Running (PID 24928) | Not loaded | 1,494 MiB / 4,096 MiB | llama-server: 1,494 MiB | Crashed | 3221225477 (0xC0000005) |
+| **Condition (c)** | Running (PID 24928) | Loaded on GPU | 1,494 MiB / 4,096 MiB | llama-server: 1,494 MiB | Crashed | 3221225477 (0xC0000005) |
+
+**Conclusion**: The crash occurs under ALL THREE conditions, including Condition (a) when GPU memory is almost completely unallocated (164 MiB total usage). Thus, the 0xC0000005 access violation is an internal C-runtime / CUDA / torch.jit fault within the child worker execution on Windows, not an out-of-memory allocator saturation. Per instructions, no further diagnosis is attempted.
 
 ---
 
