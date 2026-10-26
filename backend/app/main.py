@@ -13,6 +13,7 @@ from backend.app.core.config import settings
 from backend.app.core.logging import setup_logging, logger
 from backend.app.schemas.errors import create_error_payload
 from backend.app.services.speech_service import speech_service
+from backend.app.services.rag_service import rag_service
 
 from backend.app.api.health import router as health_router
 from backend.app.api.speech import router as speech_router
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("Initializing VoiceSense AI Backend services at startup...")
     speech_service.initialize()
+    rag_service.initialize()
     logger.info("Startup complete. VoiceSense server ready.")
     yield
     logger.info("Shutting down VoiceSense AI Backend.")

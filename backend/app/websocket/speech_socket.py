@@ -68,11 +68,18 @@ async def handle_llm_turn(
 
     # Phase 7: Intent-Gated RAG (Normal conversation never touches FAISS)
     rag_turn = await rag_service.process_turn(transcript_clean)
-    if rag_turn.retrieval_performed and rag_turn.cited_docs:
-        await safe_send_json(websocket, {
-            "type": "rag_sources",
-            "sources": rag_turn.cited_docs,
-        })
+    if rag_turn.intent.intent == "knowledge_query":
+        if rag_turn.retrieval_performed and rag_turn.cited_docs:
+            await safe_send_json(websocket, {
+                "type": "rag_sources",
+                "sources": rag_turn.cited_docs,
+            })
+        elif not rag_turn.retrieval_performed or not rag_turn.chunks:
+            await safe_send_json(websocket, {
+                "type": "status",
+                "status": "rag_fallback",
+                "message": "Knowledge base index unavailable or no relevant chunks found; falling back to direct chat.",
+            })
 
     messages = PromptBuilder.build_chat_messages(
         transcript=transcript_clean,
@@ -105,6 +112,7 @@ async def handle_llm_turn(
         await safe_send_json(websocket, {
             "type": "llm_done",
             "text": full_text,
+            "sources": rag_turn.cited_docs if (rag_turn.retrieval_performed and rag_turn.cited_docs) else [],
         })
 
         # Update in-memory conversation history

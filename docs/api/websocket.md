@@ -113,7 +113,22 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-5. **LLM Token Delta (`llm_delta`)**:
+5. **RAG Citations (`rag_sources`)**:
+   Emitted when a knowledge query retrieves grounded document chunks from the local vector index:
+   ```json
+   {
+     "type": "rag_sources",
+     "sources": [
+       {
+         "doc_name": "company_policy.md",
+         "chunk_id": "chunk_0_1234abcd",
+         "score": 0.8845
+       }
+     ]
+   }
+   ```
+
+6. **LLM Token Delta (`llm_delta`)**:
    Emitted progressively as each generated token arrives from the local LLM server. Dispatched strictly after `speech_result`.
    ```json
    {
@@ -122,12 +137,29 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-6. **LLM Completion (`llm_done`)**:
-   Emitted once the LLM stream has finished, containing the full aggregated response text.
+7. **LLM Completion (`llm_done`)**:
+   Emitted once the LLM stream has finished, containing the full aggregated response text and any grounded citations:
    ```json
    {
      "type": "llm_done",
-     "text": "Hello! I hear you're feeling happy today. How can I help?"
+     "text": "According to the company policy, the refund window is 30 days.",
+     "sources": [
+       {
+         "doc_name": "company_policy.md",
+         "chunk_id": "chunk_0_1234abcd",
+         "score": 0.8845
+       }
+     ]
+   }
+   ```
+
+8. **Status Notice (`status`)**:
+   Emitted for non-fatal runtime notices, such as when a knowledge query falls back to direct chat due to missing vector indices:
+   ```json
+   {
+     "type": "status",
+     "status": "rag_fallback",
+     "message": "Knowledge base index unavailable or no relevant chunks found; falling back to direct chat."
    }
    ```
 

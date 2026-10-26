@@ -430,3 +430,19 @@
   - Full reproducibility with logged seeds, git commit hashes, and environment versions.
   - Drop-in extensibility for future Hindi/Indic datasets without pipeline rewrites.
 
+## ADR 028: Intent-Gated Hybrid RAG Gate, Dual-Backend Vector Store & Context Budget (Phase 7 Migration)
+- **Context**:
+  The assistant requires factual knowledge retrieval over local documents without adding latency to everyday voice chat or triggering Out-Of-Memory / DLL crashes on Windows client environments. On Windows with Python 3.13, native C++ FAISS wheels (`_swigfaiss.pyd`) can be blocked by Windows Application Control policies. In addition, the local Qwen3-1.7B LLM context window is bounded at 2048 tokens.
+- **Decision**:
+  - **Hard Intent Gate (Option A)**: Implemented a two-tier hybrid gate: sub-millisecond regex pattern matching for explicit document queries in English, Hindi, and Hinglish, backed by exemplar cosine similarity via multilingual-e5-small embeddings. Unconditional default is `chat`, ensuring conversational utterances execute with zero vector search calls.
+  - **Dual-Backend Vector Store**: Built `FAISSVectorStore` supporting `faiss.IndexFlatIP` when available and falling back seamlessly to `NumpyVectorIndex` (inner product on L2-normalized float32 vectors) when native FAISS DLLs are blocked or unavailable. Persists index metadata (`index_metadata.json`) with SHA-256 document hashes and enforces strict configuration validation (`IndexConfigMismatchError`).
+  - **Explicit 2048-Token Context Budget**: Budgeted at 200 tokens (system prompt), 300 tokens (retrieved context, `top_k=2`, max 500 chars/chunk), 1024 tokens (sliding conversation history), 50 tokens (current utterance), 150 tokens (spoken response), and 324 tokens (margin).
+  - **Untrusted Data & Grounding Instruction**: Formatted retrieved chunks as untrusted reference data (not instructions) and instructed LLM to declare when the context does not contain the answer.
+  - **Zero Audio / Zero Cloud Persistence**: Local-only retrieval and embeddings.
+- **Consequences**:
+  - Zero retrieval overhead on general conversation turns.
+  - High resilience on Windows environments regardless of C++ DLL loading restrictions.
+  - Guaranteed fit within 2048-token context window without context truncation.
+  - Verified import isolation: speech perception and emotion modules remain completely independent of RAG.
+
+

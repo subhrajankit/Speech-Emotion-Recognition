@@ -30,6 +30,7 @@ models = [
 minversion = "8.0"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--import-mode=importlib"
 markers = [
     "model: marks tests that require full model weights or heavy deep learning dependencies",
     "unit: marks fast unit tests",

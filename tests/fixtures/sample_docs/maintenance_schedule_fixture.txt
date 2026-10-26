@@ -1,0 +1,5 @@
+Infrastructure Maintenance Schedule (Test Fixture)
+
+Global cloud server maintenance is scheduled every Sunday at 02:00 UTC.
+During this maintenance window, service downtime will not exceed 15 minutes.
+All automated data backups are verified before the maintenance window begins.

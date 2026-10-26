@@ -24,8 +24,8 @@ def test_health_check_structure(client):
     # Configured in Phase 6: LLM
     assert components.get("llm") in ("ok", "unavailable")
 
-    # Phase 7: RAG reports real status ('ok' if index loaded, 'idle' if not, 'not_configured' if uninitialized)
-    assert components.get("rag") in ("ok", "idle", "not_configured")
+    # Phase 7: RAG reports real status ('ok', 'no_index', or 'unavailable')
+    assert components.get("rag") in ("ok", "no_index", "unavailable")
     assert components.get("tts") == "not_configured"
     assert components.get("db") == "not_configured"
 

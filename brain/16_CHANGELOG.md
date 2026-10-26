@@ -2,6 +2,35 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 7 - Target Migration] - Intent-Gated RAG & Knowledge Retrieval (2026-10-26)
+- **Intent Router Hard Gate (`rag/intent_router.py`)**:
+  - Implemented 2-tier hybrid intent classifier: Tier 1 regex rules for English, Hindi (Devanagari), and Hinglish (Latin); Tier 2 exemplar cosine similarity using multilingual-e5-small query embeddings; Tier 3 unconditional fallback to `chat`.
+  - Schema: `{intent: "chat" | "knowledge_query", score: float, method: str}`.
+  - Zero retrieval calls for casual chat, verified with call spy counter in `tests/backend/test_rag_service.py`.
+- **Dual-Backend Vector Store (`rag/vectorstore.py`)**:
+  - `FAISSVectorStore` supporting `faiss.IndexFlatIP` with automatic fallback to pure NumPy `NumpyVectorIndex` when native FAISS DLLs are blocked by Windows Application Control or absent.
+  - Metadata tracking and validation: enforces `model_name`, `dimension`, `chunk_size`, `chunk_overlap`, and document SHA-256 hashes in `index_metadata.json`. Rejects incompatible indices with `IndexConfigMismatchError`.
+- **Multilingual E5 Small Embeddings (`rag/embeddings.py`)**:
+  - Wraps `intfloat/multilingual-e5-small` (384 dimensions) enforcing model card prefix conventions: `"query: "` for queries and `"passage: "` for chunks with L2 normalization.
+  - Deterministic normalized token-hash fallback for offline and mock test environments without downloading large weights automatically.
+- **Top-K Retrieval & Grounded Formatting (`rag/retriever.py`)**:
+  - Inner product similarity search with score thresholding (`similarity_threshold=0.70`).
+  - Clean extraction of source references without hallucinating citations.
+- **Untrusted Context Prompt Builder (`backend/app/services/prompt_builder.py`)**:
+  - Instructs LLM that retrieved context is untrusted reference data, not instructions to execute.
+  - Instructs LLM to state when context does not contain the answer.
+  - Maintains strict 2048-token context window budget: 200 (system) + 300 (chunks, top-k=2) + 1024 (history) + 50 (query) + 150 (output) + 324 (margin).
+- **Decoupled Backend RAG Service (`backend/app/services/rag_service.py`, `backend/app/websocket/speech_socket.py`)**:
+  - Threadpool offloading (`asyncio.to_thread`) for retrieval; `speech_result` is emitted first and never waits on RAG.
+  - Emits `rag_sources` event and attaches `sources` to `llm_done`.
+  - Emits `status` event (`rag_fallback`) if retrieval fails or index is missing, falling back to direct chat without breaking connection.
+  - `/api/health` reports rag component as `"ok"`, `"no_index"`, or `"unavailable"` without making overall status fail.
+- **Strict Architectural Import Isolation (`tests/backend/test_isolation.py`)**:
+  - AST inspection validates that `ai/` and `speech_service.py` have 0 imports of `rag` or `rag_service`.
+  - Lazy attribute resolution in `backend/app/services/__init__.py`.
+- **Verification Suite**:
+  - 117 tests passing across `tests/ai`, `tests/backend`, and `tests/rag` (2 skipped cleanly with reasons).
+
 ## [Phase 5 - Target Migration] - Emotion Model & Training Pipeline (2026-10-25)
 - **Config-Driven Architecture (`ai/training/config/`)**:
   - Authored `default.yaml` and `crema_d_smoke.yaml` controlling dataset paths, target emotions (`neutral`, `happy`, `sad`, `angry`), label mappings, split ratios, seeds, and hyperparameters.
