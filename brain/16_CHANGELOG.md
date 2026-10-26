@@ -2,6 +2,30 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 8c - Fix and Verify] - Spec Compliance, Multi-Segment VAD Telemetry & Honest Baseline Metrics (2026-10-27)
+- **IndicConformer Spec Compliance**:
+  - Reverted model ID to `ai4bharat/indic-conformer-600m-multilingual` per spec. Loaded via official Transformers `AutoModel.from_pretrained(..., trust_remote_code=True)` running via ONNX Runtime.
+  - Model repository verified as MIT licensed and publicly accessible on Hugging Face (no 401/403).
+  - Evaluated on user-recorded Hindi audio `tests/samples/sample_hindi_speech.wav` ("नमस्ते, आज मौसम बहुत अच्छा है।"): direct engine transcribes `"आज मौसम बहुत अच्छा है"` in 18,710 ms on CPU. Router with `language_hint="hi"` routes directly to IndicConformer with zero fallback; router with `language_hint=None` routes to SenseVoice by default policy.
+  - Replaced mock NeMo test with real model test marked `@pytest.mark.model`.
+  - Removed unsupported claim that "SenseVoiceSmall has zero Hindi vocabulary"; cited official FunASR model card documenting support for 5 languages (`zh`, `yue`, `en`, `ja`, `ko`).
+- **WebSocket vs CLI Multi-Segment Audio Mismatch**:
+  - Proved root cause: `english_speech_16k.wav` is 8.23 s (263,406 bytes); Silero VAD naturally segmented the utterance at pause > 700 ms at $t=2.02$ s (64,512 bytes). Previous test client exited early upon receiving Segment 1's `llm_done`, truncating the stream at 131,072 bytes.
+  - Added session telemetry: `segment_index`, `segment_bytes`, `segment_duration_s`, `session_total_audio_bytes`, and `flushed_on_stop`.
+  - Documented in `docs/api/websocket.md` that multi-segment VAD utterances each dispatch their own `speech_result`.
+- **RAG Gate Benchmark & Consolidation**:
+  - Built labelled evaluation dataset in `rag/eval_dataset.py` (70 examples: 35 knowledge, 35 chat across English, Hindi, and Hinglish); measured 100% precision/recall while documenting the set as small and indicative only.
+  - Consolidated duplicate directories: removed `rag/documents/` and `rag/vectorstore/`; unified on canonical `data/documents/` and `data/index/`.
+  - Disclosed that current documents in `data/documents/` are sample fixtures.
+- **TTS Crash Analysis & Truthful Grounding**:
+  - Proved exit code 3221225477 (0xC0000005) is an access violation occurring across all conditions (even with llama-server stopped and 3.9 GB VRAM free), refuting the assumption of simple VRAM capacity exhaustion.
+  - Clarified Phase 8 status: plumbing verified with test doubles; real synthesis verified standalone; full real end-to-end on this 4 GB GPU failed/crashed with access violation.
+- **Small Fixes**:
+  - Normalized `EMO_UNKNOWN` to `None` (`null`) so unknown emotion never leaks into `SpeechResult.emotion`.
+  - Clarified TRD 180 ms target vs measured 194 ms – 380 ms TTFT on Qwen3-1.7B.
+  - All 10 model/network tests decorated with `@pytest.mark.model`.
+  - Full test suite: 244 passed, 1 skipped, 0 failed.
+
 ## [Phase 8b - Reality Check] - Elimination of Runtime Fakes & Empirical Baseline Grounding (2026-10-26)
 - **Zero Runtime Fakes Invariant**:
   - Completely purged all mock code paths, `mock=True` parameter lookups, and deterministic fallback hashes from `ai/inference/sensevoice.py`, `ai/inference/indicconformer.py`, `ai/preprocessing/vad.py`, and `rag/embeddings.py`.

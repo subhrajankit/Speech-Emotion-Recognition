@@ -485,7 +485,17 @@
 - **Consequences**:
   - Zero synthetic results or mock bypasses in production code.
   - Predictable, stable voice loop operation on 4 GB target workstations.
-  - Full transparency: all previously reported mock benchmarks marked INVALID.
+  ## ADR 031: Phase 8c — IndicConformer-600m Spec Reversion, Knowledge Base Consolidation & VAD Multi-Segment Semantics
+- **Context**:
+  Phase 8b review identified unproven claims, ungrounded benchmark figures, a discrepancy between CLI and WebSocket audio length, duplicate RAG directories, and an unauthorized model substitution for Indic ASR.
+- **Decision**:
+  1. **IndicConformer Model Spec**: Reverted to `ai4bharat/indic-conformer-600m-multilingual` using official Hugging Face Transformers loading (`AutoModel.from_pretrained(..., trust_remote_code=True)` via ONNX Runtime). Single-clip evaluation verified on `sample_hindi_speech.wav` ("नमस्ते, आज मौसम बहुत अच्छा है।").
+  2. **VAD Multi-Segment WebSocket Framing**: When continuous speech contains pauses $> 700\text{ ms}$, Silero VAD segments audio into discrete utterances. Each segment emits its own sequential `speech_result`. WebSocket clients must process multi-segment turns rather than assuming a single final result per stream.
+  3. **RAG Storage Consolidation**: Eliminated duplicate directories. Retained `data/documents/` as canonical document store and `data/index/` as canonical FAISS index.
+  4. **Emotion Normalization**: Normalized `EMO_UNKNOWN` to `None` (`null`) in `SpeechResult.emotion` to prevent sentinel leakage into downstream LLM prompt builders and client UIs.
+- **Consequences**:
+  - Full adherence to architectural specifications without unapproved substitutions.
+  - Transparent, verified performance metrics grounded in reproducible test runs.
 
 
 
