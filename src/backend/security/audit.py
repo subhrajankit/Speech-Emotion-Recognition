@@ -51,13 +51,11 @@ class AuditLogger:
         payload = f"{index}|{timestamp}|{event_type}|{canonical_details}|{prev_hash}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def log_event(self, event_type: str, details: Optional[Dict[str, Any]] = None, actor: Optional[str] = None) -> Dict[str, Any]:
+    def log_event(self, event_type: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Appends a hash-chained audit event to the ledger.
         """
-        details = details.copy() if details else {}
-        if actor:
-            details["actor"] = actor
+        details = details or {}
         timestamp = datetime.now(timezone.utc).isoformat()
         index = self._last_index + 1
         prev_hash = self._last_hash
@@ -109,7 +107,7 @@ class AuditLogger:
 
                 # Verify prev_hash
                 if record.get("prev_hash") != expected_prev_hash:
-                    return False, f"Line {line_no}: Hash mismatch. Expected prev_hash {expected_prev_hash}, got {record.get('prev_hash')}."
+                    return False, f"Line {line_no}: Hash chain broken. Expected prev_hash {expected_prev_hash}, got {record.get('prev_hash')}."
 
                 # Recompute digest
                 computed_hash = self._compute_hash(
@@ -121,12 +119,12 @@ class AuditLogger:
                 )
 
                 if record.get("hash") != computed_hash:
-                    return False, f"Line {line_no}: Hash mismatch. Expected {computed_hash}, got {record.get('hash')}."
+                    return False, f"Line {line_no}: Tampered record hash. Expected {computed_hash}, got {record.get('hash')}."
 
                 expected_prev_hash = record["hash"]
                 expected_index += 1
 
-        return True, expected_index
+        return True, None
 
 
 # Global singleton

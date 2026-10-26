@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     INDICCONFORMER_MODEL_DIR: str = "ai4bharat/indic-conformer-600m-multilingual"
     INDICCONFORMER_REVISION: str = "2a77d305038dfc502fd9464e7d028b90381976cb"
     INDICCONFORMER_DEVICE: str = "cpu"
-    INDICCONFORMER_DECODER_TYPE: str = "rnnt"
+    INDICCONFORMER_DECODER_TYPE: str = "ctc"
     LID_CONFIDENCE_THRESHOLD: float = 0.6
     LAZY_LOAD_MODELS: bool = True
 

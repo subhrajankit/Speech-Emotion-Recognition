@@ -13,14 +13,6 @@ from src.backend.pipeline.intent import IntentRouter, IntentCategory
 from src.backend.database.storage import EmotionStorage
 
 
-@pytest.fixture(autouse=True)
-def enable_mock_models():
-    orig = settings.MOCK_MODELS
-    settings.MOCK_MODELS = True
-    yield
-    settings.MOCK_MODELS = orig
-
-
 def test_unauthenticated_websocket_handshake_rejected():
     settings.REQUIRE_AUTH = True
     try:
@@ -38,9 +30,9 @@ def test_authenticated_websocket_handshake_accepted():
         client = TestClient(app)
         token = create_access_token(session_id="secure_session_1", client_id="test_client")
         with client.websocket_connect(f"/ws/voice?token={token}") as ws:
-            ws.send_json({"type": "ping"})
             data = ws.receive_json()
-            assert data.get("type") == "pong"
+            assert data.get("type") == "session_ready"
+            assert data.get("session_id") == "secure_session_1"
     finally:
         settings.REQUIRE_AUTH = False
 

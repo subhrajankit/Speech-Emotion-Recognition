@@ -51,7 +51,7 @@ class IndicConformerSpeechEngine(SpeechEngine):
         self,
         model_dir: Optional[str] = None,
         device: Optional[str] = None,
-        decoder_type: str = "rnnt",
+        decoder_type: str = "ctc",
         vad_model_path: Optional[str] = None,
         vad_threshold: Optional[float] = None,
         auto_load: bool = True,
@@ -64,7 +64,7 @@ class IndicConformerSpeechEngine(SpeechEngine):
         Args:
             model_dir: Checkpoint path or HuggingFace ID.
             device: Compute device ('cpu' or 'cuda').
-            decoder_type: Decoding mode ('ctc' or 'rnnt'). Default is 'rnnt' for low CPU latency.
+            decoder_type: Decoding mode ('ctc' or 'rnnt'). Default is 'ctc' for fastest CPU execution.
             vad_model_path: Optional path to Silero VAD ONNX model.
             vad_threshold: Speech detection probability threshold.
             auto_load: If True, loads model immediately.
@@ -80,7 +80,7 @@ class IndicConformerSpeechEngine(SpeechEngine):
             "2a77d305038dfc502fd9464e7d028b90381976cb"
         )
         self.device = device or os.getenv("INDICCONFORMER_DEVICE", "cpu")
-        self.decoder_type = decoder_type or os.getenv("INDICCONFORMER_DECODER_TYPE", "rnnt")
+        self.decoder_type = decoder_type or os.getenv("INDICCONFORMER_DECODER_TYPE", "ctc")
         self._model_version = f"IndicConformer-600m ({Path(self.model_dir).name})"
 
         self.vad = SileroVAD(

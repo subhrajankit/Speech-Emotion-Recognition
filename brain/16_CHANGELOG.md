@@ -2,12 +2,39 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 8e - Settle Legacy Tree and Prove What Runs] - Quarantine Legacy Tree, CTC vs RNNT Fair Benchmark, Live WebSocket Proof (2026-10-27)
+- **Legacy Tree Quarantine (Option b)**:
+  - Baseline commit identified: `ebd840783e31011cece9b7c03d350ede69a0cfed` (merge-base with main).
+  - Restored `src/` and all legacy tests (`tests/unit/`, `tests/integration/`, `tests/api/`, `tests/e2e/`) to exact baseline content; removed Phase 8b shims (`src/backend/models/`).
+  - Verified via `git log -S` that hash-chained audit (`AuditLogger`), liveness (`VoiceLivenessDetector`), and WebTransport existed in baseline `ebd84078` as user's earlier work. Standardized terminology to "legacy implementation, not wired into the target architecture".
+  - Moved legacy tests to `tests/legacy/` via `git mv`; excluded them from default test runs via `--ignore=tests/legacy` in `pyproject.toml`.
+  - Moved legacy `src.backend.models.manager` autouse fixture into `tests/legacy/conftest.py`. Cleaned root `tests/conftest.py` (0 imports of `src`).
+  - Proved decoupling: grep for `src.` in `tests/` outside `tests/legacy/` returns 0 hits; temporarily renamed `src/` to `src_quarantine_test`, ran canonical suite (139/139 passed), renamed back, verified `git status` clean for `src/`.
+  - Audited repository for `src.` references across Dockerfiles, compose, scripts, CI, and runbooks.
+  - Authored `docs/architecture/legacy-src.md` containing subsystem inventory, porting feasibility, and migration requirements.
+- **Live Server & WebSocket Proof**:
+  - Inspected TCP listeners: port 8000 running canonical app (`uvicorn backend.app.main:app`, PID 16480); port 8080 running `llama-server` (PID 24928).
+  - Proved canonical app routes via `/api/health` and route inspection (`/ws/speech` APIWebSocketRoute mounted).
+  - Executed `scripts/ws_client.py` against live server on `english_speech_16k.wav` (with synthetic audio disclosure) and `sample_hindi_speech.wav` (`language_hint="hi"`). Captured untrimmed logs: real neural processing time 407 ms – 1658 ms (English) and 1245 ms (Hindi), confidence `null`, full segment debug metadata.
+  - Verified that `scripts/test_voice_turn.py` connects over live WebSocket to `ws://127.0.0.1:8000/ws/speech` via `websockets.connect` (not an in-process TestClient).
+  - Marked Phase 8c WebSocket figures (confidence 0.85, 28 ms, 78 ms) as RETRACTED in `docs/api/websocket.md` and changelog.
+- **Fair Benchmark: CTC vs RNNT on IndicConformer-600m**:
+  - Single-process benchmark on 16kHz `sample_hindi_speech.wav` (1 warm-up + 5 timed runs per mode, identical thread settings):
+    - CTC: min = 966.4 ms, median = **1,198.1 ms** (RTF 0.23), max = 1,321.9 ms | RAM: 3,750 MB | Transcript: `"आज मौसम बहुत अच्छा है"`
+    - RNNT: min = 2,395.9 ms, median = **2,757.5 ms** (RTF 0.52), max = 6,144.9 ms | RAM: 3,740 MB | Transcript: `"आज मौसम बहुत अच्छा है"`
+  - Findings: CTC is ~2.3x faster than RNNT on CPU with identical transcript output. Configured default `INDICCONFORMER_DECODER_TYPE="ctc"`. Removed "high accuracy" phrasing from documentation.
+  - Report-only experiment (300ms prepended silence): neither CTC nor RNNT recovered leading `"नमस्ते"` (`"आज मौसम बहुत अच्छा है"` produced by both).
+- **TTS Parked Workflow & Process Telemetry**:
+  - Added Section 5 ("Procedure to Retest TTS") to `docs/deployment/tts-benchmark-rtx2050.md` detailing reboot, process closing, and running `measure_clamped_tts.py` first.
+  - Telemetry: recorded top 10 memory-consuming processes.
+- **Canonical Test Suite**: 139 passed, 0 failed, 0 skipped.
+
 ## [Phase 8d - Fix and Verify] - Provenance Grounding, Gate Adversarial Evaluation & Spec Rigor (2026-10-27)
 - **Legacy `src/` Tree Inventory & Proposal**:
   - Full inventory completed: `src/` represents a pre-Phase 1 legacy architecture containing duplicate models, security, transport, and pipeline modules.
   - Dependency analysis proves zero (`0`) imports of `src` from `backend/app/`, `ai/`, `rag/`, or `tts/`.
   - Exactly 23 test files under `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/api/` and `tests/conftest.py` import `src.backend.*`.
-  - Diff analysis of the 4 modified files (`audit.py`, `liveness.py`, `websocket_fallback.py`, `manager.py`) confirmed additions of unrequested features (ledger hash chaining, audio anti-spoofing). Proposal submitted for user decision; no files touched.
+  - Diff analysis of the 4 modified files (`audit.py`, `liveness.py`, `websocket_fallback.py`, `manager.py`) confirmed additions of legacy implementations, not wired into the target architecture (ledger hash chaining, audio anti-spoofing). Proposal submitted for user decision; no files touched.
 - **TTS Doc Provenance & Crash Telemetry**:
   - In `docs/deployment/tts-benchmark-rtx2050.md`, all unverified rows (`scripts/measure_tts_e2e.py`, `scripts/benchmark_tts_cpu.py`) marked **NOT MEASURED**.
   - All 8 verified WAV files on disk enumerated with `ls` byte sizes.
@@ -16,7 +43,7 @@ All notable changes across build phases are recorded here.
 - **WebSocket Result Fields Verification**:
   - Live server WebSocket run verified: `confidence` is strictly `None` (`null` in JSON) per Phase 1 specification.
   - Standardized `model_version` to `"SenseVoiceSmall (funasr)"` consistent with CLI.
-  - Proved that previous 28ms/78ms reports were artifacts of mock test double injection; real neural processing on host CPU is 487ms to 1895ms per segment.
+  - Explicitly marked Phase 8c WebSocket figures (confidence 0.85, 28 ms, 78 ms) as RETRACTED: those numbers were artifacts of simulated test double mock injection. Real neural inference measured in live server WebSocket run is 407 ms - 1658 ms on host CPU, and confidence is null per Phase 1 specification.
 - **SenseVoice Model Card Exact Citation**:
   - Fetched and cited official ModelScope and FunASR GitHub README (`https://modelscope.cn/models/iic/SenseVoiceSmall`).
   - Quoted exact statement (line 68): `"模型可以被应用于中文、粤语、英语、日语、韩语音频识别，并输出带有情感和事件的富文本转写结果。"`

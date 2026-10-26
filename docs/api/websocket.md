@@ -117,7 +117,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      }
    }
    ```
-   *(Note: Real SenseVoiceSmall neural processing time measured in Phase 8b is ~480 ms – 990 ms on CPU/GPU. Previous benchmark figures citing 23 ms or 28 ms were produced by test mock injection and are INVALID. Per Phase 1 spec, confidence is null unless the neural model produces calibrated posterior probabilities.)*
+    *(RETRACTED: Phase 8c benchmark figures citing confidence 0.85, 28 ms, or 78 ms are RETRACTED. Those numbers were produced by test mock injection / simulated test doubles and do not reflect neural inference. Real neural processing measured on live server in Phase 8e is 407 ms - 1658 ms on host CPU, and confidence is strictly null per Phase 1 specification.)*
    *(Audio Sample Disclosure: `tests/samples/english_speech_16k.wav` is synthetic audio generated via TTS synthesis, not human speech. It is used strictly for stream protocol regression testing, never as evidence of human ASR accuracy.)*
 
    **Multi-segment VAD Segmentation & Streaming Semantics**:

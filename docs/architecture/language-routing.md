@@ -95,12 +95,27 @@ The decision logic in `ai/routing/language_router.py` enforces a deterministic 3
       trust_remote_code=True
   )
   ```
-- **Empirical Decoding Speed & Mode Selection (Measured on Target CPU - AMD Ryzen 5 7535HS, 4 Threads)**:
-  - Evaluation Clip: `tests/samples/sample_hindi_speech.wav` (5.28s user speech: "नमस्ते, आज मौसम बहुत अच्छा है।").
-  - `ctc` (Connectionist Temporal Classification): **18.17 s** (RTF 3.44) — Transcript: `"आज मौसम बहुत अच्छा है"`
-  - `rnnt` (Recurrent Neural Network Transducer): **4.72 s** (RTF 0.89) — Transcript: `"आज मौसम बहुत अच्छा है"`
-  - **Decision**: `rnnt` is configured as the default `INDICCONFORMER_DECODER_TYPE="rnnt"` because it executes in real-time (RTF < 1.0) while producing identical high-accuracy Devanagari output.
-  - Cold load time: 11.03 s. Process RAM during inference: ~1.8 GB. Execution provider: `CPUExecutionProvider` via ONNX Runtime.
+- **Empirical Decoding Speed & Mode Selection (Controlled Fair Benchmark — Single Process, 1 Warm-up + 5 Timed Runs, CPU Execution)**:
+  - Evaluation Clip: `tests/samples/sample_hindi_speech.wav` (5.28s acoustic speech resampled to 16kHz; prompt spoken: "नमस्ते, आज मौसम बहुत अच्छा है।").
+  - `ctc` (Connectionist Temporal Classification):
+    - Warm-up: 1,987.4 ms
+    - 5 Timed Runs: min = **966.4 ms**, median = **1,198.1 ms** (RTF 0.23), max = **1,321.9 ms**
+    - Transcript across all runs: `"आज मौसम बहुत अच्छा है"`
+    - Working Set RAM: 3,749 MB – 3,750 MB
+  - `rnnt` (Recurrent Neural Network Transducer):
+    - Warm-up: 11,762.4 ms
+    - 5 Timed Runs: min = **2,395.9 ms**, median = **2,757.5 ms** (RTF 0.52), max = **6,144.9 ms**
+    - Transcript across all runs: `"आज मौसम बहुत अच्छा है"`
+    - Working Set RAM: 3,738 MB – 3,740 MB
+  - **Findings & Theoretical Alignment**:
+    - CTC is ~2.3x faster than RNNT (median 1.20s vs 2.76s) because CTC performs a non-autoregressive parallel forward pass over acoustic frames, whereas RNNT evaluates its prediction and joint network sequentially in an autoregressive transducer loop.
+    - Earlier reports suggesting CTC was 4x slower were confounded by cold model weight loading and thread-throttling in un-warmed benchmark scripts.
+    - **Decision**: `ctc` is configured as the default `INDICCONFORMER_DECODER_TYPE="ctc"` because it provides lowest CPU latency while producing the exact same transcript.
+  - **Report-Only Experiment (Prepend 300ms Silence)**:
+    - Prepending 300ms of digital silence to `sample_hindi_speech.wav` resulted in:
+      - `rnnt`: `"आज मौसम बहुत अच्छा है"` ('नमस्ते' recovered: False, latency: 1,876.9 ms)
+      - `ctc`: `"आज मौसम बहुत अच्छा है"` ('नमस्ते' recovered: False, latency: 1,697.6 ms)
+    - Neither mode recovered the leading "नमस्ते", indicating the missing leading token in this specific recording is due to acoustic clipping/onset truncation in the original recording rather than VAD pre-roll cutoff.
 
 ---
 

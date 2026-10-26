@@ -106,3 +106,18 @@ To test exit code `3221225477` (-1073741819 / `0xC0000005 STATUS_ACCESS_VIOLATIO
    {"type": "error", "code": "tts_unavailable", "message": "TTS synthesis failed for sentence 0..."}
    ```
    The WebSocket connection remains healthy and open for ongoing ASR and LLM dialogue.
+
+---
+
+## 5. Procedure to Retest TTS (Parked Workflow)
+
+Active TTS debugging is officially parked. When environmental or driver updates justify re-evaluating TTS, follow this exact procedure:
+1. **Reboot**: Perform a clean system reboot to release all fragmented VRAM allocations and kernel memory handles.
+2. **Close Everything Else**: Ensure no browsers, IDE instances, Docker containers, WSL instances, or secondary daemons (e.g. `llama-server`, `uvicorn`) are active.
+3. **Run `measure_clamped_tts.py` First**:
+   Execute the standalone benchmark prior to launching any other services:
+   ```powershell
+   & ".\.venv-tts\Scripts\python.exe" scripts/measure_clamped_tts.py
+   ```
+4. **Evaluate Telemetry**: Verify whether execution succeeds without Windows access violations (`0xC0000005`) before re-enabling `TTS_ENABLED=true` in `config.py`.
+

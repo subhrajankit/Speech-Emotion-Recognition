@@ -135,6 +135,10 @@ def test_dual_engine_identical_schema():
         indic_engine = IndicConformerSpeechEngine(model_dir=indic_model_dir, device="cpu", auto_load=True)
         hindi_audio = load_and_preprocess_audio(hindi_wav)
         indic_res = indic_engine.transcribe(hindi_audio, language_hint="hi")
+        # Free IndicConformer weights before loading SenseVoice to prevent host RAM exhaustion
+        del indic_engine
+        import gc
+        gc.collect()
     except Exception as e:
         pytest.skip(f"IndicConformer could not be loaded or executed: {e}")
 
