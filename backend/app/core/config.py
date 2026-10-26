@@ -64,7 +64,6 @@ class Settings(BaseSettings):
     INDICCONFORMER_DEVICE: str = "cpu"
     INDICCONFORMER_DECODER_TYPE: str = "ctc"
     LID_CONFIDENCE_THRESHOLD: float = 0.6
-    MOCK_MODELS: bool = False
     LAZY_LOAD_MODELS: bool = True
 
     # LLM Settings (Qwen3 via local llama.cpp)
@@ -78,13 +77,17 @@ class Settings(BaseSettings):
     LLM_COOLDOWN_SECONDS: float = 15.0
 
     # TTS Settings (Indic Parler-TTS — ai4bharat/indic-parler-tts)
+    TTS_ENABLED: bool = False  # Explicit gating: default False on this machine per decision rule
     TTS_MODEL_ID: str = "ai4bharat/indic-parler-tts"
-    TTS_DEVICE: str = "cuda"  # switchable to "cpu"
+    TTS_DEVICE: str = "auto"  # "auto" | "cuda" | "cpu"
+    TTS_DTYPE: str = "float16"  # "float32" | "float16" | "bfloat16"
     TTS_SAMPLE_RATE: int = 44100
     TTS_EMOTION_STYLING_ENABLED: bool = False  # Off by default per Phase 8 spec
     TTS_DEFAULT_SPEAKER: str = "Aditi"
     TTS_MAX_SENTENCE_LENGTH: int = 500
     TTS_CONCURRENCY_LIMIT: int = 1
+    TTS_SENTENCE_TIMEOUT_SECONDS: float = 30.0
+    TTS_COOLDOWN_SECONDS: float = 60.0
     TTS_WORKER_PYTHON: str = ".venv-tts/Scripts/python.exe"
 
 

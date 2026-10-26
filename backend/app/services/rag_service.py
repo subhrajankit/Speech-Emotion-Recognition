@@ -38,12 +38,10 @@ class RAGService:
         index_dir: str = "rag/vectorstore",
         model_id: str = DEFAULT_MODEL_ID,
         similarity_threshold: float = 0.70,
-        mock_models: bool = False,
     ):
         self.index_dir = Path(index_dir)
         self.model_id = model_id
         self.similarity_threshold = similarity_threshold
-        self.mock_models = mock_models
 
         self.embedder: Optional[MultilingualE5Embeddings] = None
         self.vectorstore: Optional[FAISSVectorStore] = None
@@ -59,7 +57,6 @@ class RAGService:
         logger.info("Initializing RAGService...")
         self.embedder = MultilingualE5Embeddings(
             model_id=self.model_id,
-            mock=self.mock_models,
         )
 
         self.vectorstore = FAISSVectorStore(

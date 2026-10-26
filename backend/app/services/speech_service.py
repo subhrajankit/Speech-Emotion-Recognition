@@ -48,10 +48,8 @@ class SpeechService:
         if self._is_initialized and self._engine is not None:
             return
 
-        logger.info(f"Initializing SpeechService (mock={settings.MOCK_MODELS})...")
-
-        # Auto-load can be disabled via LAZY_LOAD_MODELS or MOCK_MODELS
-        auto_load = (not settings.MOCK_MODELS) and (not settings.LAZY_LOAD_MODELS)
+        logger.info("Initializing SpeechService...")
+        auto_load = not settings.LAZY_LOAD_MODELS
 
         # 1. Initialize SenseVoiceSmall (Global ASR + SER)
         try:
@@ -60,22 +58,14 @@ class SpeechService:
                 device=settings.SENSEVOICE_DEVICE,
                 threads=settings.SENSEVOICE_THREADS,
                 vad_threshold=settings.VAD_THRESHOLD,
-                mock=settings.MOCK_MODELS,
                 auto_load=auto_load,
             )
             self._init_error = None
             logger.info("SenseVoice engine initialized successfully.")
         except Exception as e:
-            logger.warning(f"Failed to initialize real SenseVoice model ({e}). Falling back to mock engine.")
+            logger.warning(f"Failed to initialize real SenseVoice model ({e}).")
             self._init_error = str(e)
-            self._sensevoice = SenseVoiceSpeechEngine(
-                model_dir=settings.SENSEVOICE_MODEL_DIR,
-                device=settings.SENSEVOICE_DEVICE,
-                threads=settings.SENSEVOICE_THREADS,
-                vad_threshold=settings.VAD_THRESHOLD,
-                mock=True,
-                auto_load=False,
-            )
+            self._sensevoice = None
 
         # 2. Initialize IndicConformer-600m (Indic ASR)
         try:
@@ -84,22 +74,14 @@ class SpeechService:
                 device=settings.INDICCONFORMER_DEVICE,
                 decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
                 vad_threshold=settings.VAD_THRESHOLD,
-                mock=settings.MOCK_MODELS,
                 auto_load=auto_load,
             )
             self._indic_init_error = None
             logger.info("IndicConformer engine initialized successfully.")
         except Exception as e:
-            logger.warning(f"Failed to initialize real IndicConformer model ({e}). Falling back to mock engine.")
+            logger.warning(f"Failed to initialize real IndicConformer model ({e}).")
             self._indic_init_error = str(e)
-            self._indicconformer = IndicConformerSpeechEngine(
-                model_dir=settings.INDICCONFORMER_MODEL_DIR,
-                device=settings.INDICCONFORMER_DEVICE,
-                decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
-                vad_threshold=settings.VAD_THRESHOLD,
-                mock=True,
-                auto_load=False,
-            )
+            self._indicconformer = None
 
         # Default engine reference
         self._engine = self._sensevoice
@@ -287,11 +269,9 @@ class SpeechService:
         Placeholders for llm, rag, tts, db are 'not_configured'.
         Overall status is 'ok' or 'degraded'; does not fail for optional components.
         """
-        sv_mock = self._sensevoice.mock if self._sensevoice else False
-        ic_mock = self._indicconformer.mock if self._indicconformer else False
         is_error = (self._init_error is not None) or (self._indic_init_error is not None)
 
-        if self.is_ready and not is_error and not sv_mock and not ic_mock:
+        if self.is_ready and not is_error:
             asr_status = "ok"
             emotion_status = "ok"
             overall_status = "ok"

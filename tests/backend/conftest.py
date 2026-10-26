@@ -13,11 +13,29 @@ from backend.app.core.config import settings
 from backend.app.main import create_app
 
 
+from tests.test_doubles import FakeSenseVoiceEngine, FakeIndicConformerEngine
+from backend.app.services.speech_service import speech_service
+
+
 @pytest.fixture
 def app():
-    """Provides a fresh FastAPI application instance for tests."""
-    settings.MOCK_MODELS = True
+    """Provides a fresh FastAPI application instance with explicit test doubles injected."""
     settings.AUTH_REQUIRED = False
+    from ai.routing.language_router import LanguageRouter
+    fake_sv = FakeSenseVoiceEngine()
+    fake_ic = FakeIndicConformerEngine()
+    speech_service._sensevoice = fake_sv
+    speech_service._indicconformer = fake_ic
+    speech_service._engine = fake_sv
+    speech_service._router = LanguageRouter(
+        default_engine="sensevoice",
+        default_language="en",
+        lid_confidence_threshold=settings.LID_CONFIDENCE_THRESHOLD,
+    )
+    speech_service._init_error = None
+    speech_service._indic_init_error = None
+    speech_service._is_initialized = True
+
     application = create_app()
     return application
 

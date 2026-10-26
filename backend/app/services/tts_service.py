@@ -46,6 +46,11 @@ class TTSOOMError(TTSError):
     pass
 
 
+class TTSTimeoutError(TTSError):
+    """Raised when TTS sentence synthesis exceeds the configured timeout."""
+    pass
+
+
 # ==============================================================================
 # TTS Chunk Data
 # ==============================================================================
@@ -254,6 +259,17 @@ class TTSService:
         self._worker_process: Optional[subprocess.Popen] = None
         self._engine_override = None  # Hook for test-only FakeEngineForTests
 
+        # Device & Fallback configuration
+        configured = (settings.TTS_DEVICE or "auto").lower()
+        if configured == "auto":
+            self._active_device = "cuda"
+        elif configured in ("cuda", "cpu"):
+            self._active_device = configured
+        else:
+            self._active_device = "cpu"
+        self._fallback_to_cpu = False
+        self._cooldown_until: float = 0.0
+
     @property
     def is_loaded(self) -> bool:
         return self._is_loaded
@@ -348,6 +364,20 @@ class TTSService:
         if not cleaned:
             return
 
+        if not getattr(settings, "TTS_ENABLED", False):
+            logger.debug("[TTSService] TTS is disabled via TTS_ENABLED=False. Continuing text-only.")
+            return
+
+        # Check cooldown circuit breaker
+        now = time.time()
+        if now < self._cooldown_until:
+            rem = self._cooldown_until - now
+            logger.warning(
+                f"[TTSService] In cool-down period ({rem:.1f}s remaining). "
+                f"Skipping TTS audio generation and continuing text-only."
+            )
+            return
+
         # Lazy init on first request
         if not self._is_loaded:
             await asyncio.to_thread(self.initialize)
@@ -378,6 +408,15 @@ class TTSService:
                         sentence,
                         voice_desc
                     )
+                except TTSTimeoutError as t_err:
+                    cooldown = getattr(settings, "TTS_COOLDOWN_SECONDS", 60.0)
+                    self._cooldown_until = time.time() + cooldown
+                    logger.warning(
+                        f"[TTSService] Sentence {idx} exceeded timeout ({t_err}). "
+                        f"Marking TTS unavailable for {cooldown:.0f}s cool-down. "
+                        f"Continuing text-only."
+                    )
+                    return
                 except Exception as e:
                     logger.error(f"[TTSService] Synthesis failed for sentence {idx}: {e}")
                     if isinstance(e, TTSOOMError) or "out of memory" in str(e).lower():
@@ -404,22 +443,35 @@ class TTSService:
         if self._engine_override is not None:
             return self._engine_override.synthesize_wav(text, description)
 
-        if self._model is not None:
-            return self._synthesize_with_model(text, description)
+        try:
+            if self._model is not None:
+                return self._synthesize_with_model(text, description)
 
-        # Worker fallback
-        worker_python = settings.TTS_WORKER_PYTHON
-        if os.path.exists(worker_python):
-            return self._synthesize_with_worker(text, description)
+            # Worker fallback
+            worker_python = settings.TTS_WORKER_PYTHON
+            if os.path.exists(worker_python):
+                return self._synthesize_with_worker(text, description)
 
-        raise TTSError("TTS model is not loaded and no worker is configured.")
+            raise TTSError("TTS model is not loaded and no worker is configured.")
+        except TTSOOMError as oom_err:
+            if self._active_device != "cpu":
+                logger.warning(
+                    f"[TTSService] CUDA OOM encountered ({oom_err}). "
+                    f"Automatically switching TTS_DEVICE to CPU to keep backend alive."
+                )
+                self._active_device = "cpu"
+                self._fallback_to_cpu = True
+                worker_python = settings.TTS_WORKER_PYTHON
+                if os.path.exists(worker_python):
+                    return self._synthesize_with_worker(text, description)
+            raise
 
     def _synthesize_with_model(self, text: str, description: str) -> tuple[bytes, int]:
         import torch
         import soundfile as sf
 
         try:
-            device = settings.TTS_DEVICE
+            device = self._active_device
             input_ids = self._tokenizer(description, return_tensors="pt").input_ids.to(device)
             prompt_input_ids = self._tokenizer(text, return_tensors="pt").input_ids.to(device)
 
@@ -429,7 +481,7 @@ class TTSService:
                     prompt_input_ids=prompt_input_ids,
                 )
 
-            audio_arr = generation.cpu().numpy().squeeze()
+            audio_arr = generation.to(torch.float32).cpu().numpy().squeeze()
             wav_buf = io.BytesIO()
             sf.write(wav_buf, audio_arr, self._sample_rate, format="WAV", subtype="PCM_16")
             wav_buf.seek(0)
@@ -437,7 +489,8 @@ class TTSService:
 
         except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
             if "out of memory" in str(e).lower():
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 raise TTSOOMError(f"CUDA out of memory during TTS synthesis: {e}") from e
             raise TTSError(f"Model generation error: {e}") from e
 
@@ -454,14 +507,16 @@ class TTSService:
                 worker_script,
                 "--text", text,
                 "--description", description,
-                "--device", settings.TTS_DEVICE,
+                "--device", self._active_device,
+                "--dtype", getattr(settings, "TTS_DTYPE", "float16"),
                 "--model", settings.TTS_MODEL_ID,
                 "--output", tmp_path,
             ]
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60.0)
+            timeout_sec = getattr(settings, "TTS_SENTENCE_TIMEOUT_SECONDS", 30.0)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout_sec)
             if result.returncode != 0:
                 err = result.stderr.decode("utf-8", errors="replace")
-                if "out of memory" in err.lower():
+                if "out of memory" in err.lower() or "memoryerror" in err.lower() or result.returncode == 137:
                     raise TTSOOMError(f"CUDA out of memory in TTS worker: {err}")
                 raise TTSError(f"TTS worker failed (code {result.returncode}): {err}")
 
@@ -471,7 +526,12 @@ class TTSService:
             if len(wav_bytes) < 44 or wav_bytes[:4] != b"RIFF":
                 raise TTSError(f"TTS worker returned invalid WAV data ({len(wav_bytes)} bytes)")
             return wav_bytes, settings.TTS_SAMPLE_RATE
+        except subprocess.TimeoutExpired as timeout_err:
+            raise TTSTimeoutError(
+                f"TTS worker exceeded sentence timeout of {timeout_sec:.1f}s on {self._active_device}"
+            ) from timeout_err
         finally:
+
             if os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
@@ -499,11 +559,25 @@ class TTSService:
 
     def get_health_status(self) -> Dict[str, Any]:
         """Returns structured health status for /api/health."""
+        if not getattr(settings, "TTS_ENABLED", False):
+            return {
+                "status": "disabled",
+                "model": settings.TTS_MODEL_ID,
+                "device": self._active_device,
+                "configured_device": settings.TTS_DEVICE,
+                "dtype": getattr(settings, "TTS_DTYPE", "float16"),
+                "fallback_to_cpu": self._fallback_to_cpu,
+                "note": "TTS disabled via TTS_ENABLED=False setting",
+            }
+
         if not self._is_loaded and self._load_error is None:
             return {
                 "status": "not_loaded",
                 "model": settings.TTS_MODEL_ID,
-                "device": settings.TTS_DEVICE,
+                "device": self._active_device,
+                "configured_device": settings.TTS_DEVICE,
+                "dtype": getattr(settings, "TTS_DTYPE", "float16"),
+                "fallback_to_cpu": self._fallback_to_cpu,
                 "note": "TTS model loads lazily on first synthesis request",
             }
 
@@ -511,17 +585,30 @@ class TTSService:
             return {
                 "status": "unavailable",
                 "model": settings.TTS_MODEL_ID,
-                "device": settings.TTS_DEVICE,
+                "device": self._active_device,
+                "configured_device": settings.TTS_DEVICE,
+                "dtype": getattr(settings, "TTS_DTYPE", "float16"),
+                "fallback_to_cpu": self._fallback_to_cpu,
                 "error": self._load_error,
             }
 
-        return {
-            "status": "ok",
+        now = time.time()
+        in_cooldown = now < self._cooldown_until
+        status = "cooldown" if in_cooldown else ("degraded" if self._fallback_to_cpu else "ok")
+        res = {
+            "status": status,
             "model": settings.TTS_MODEL_ID,
-            "device": settings.TTS_DEVICE,
+            "device": self._active_device,
+            "configured_device": settings.TTS_DEVICE,
+            "dtype": getattr(settings, "TTS_DTYPE", "float16"),
+            "fallback_to_cpu": self._fallback_to_cpu,
             "sample_rate": self._sample_rate,
             "emotion_styling": settings.TTS_EMOTION_STYLING_ENABLED,
         }
+        if in_cooldown:
+            res["cooldown_remaining_seconds"] = round(self._cooldown_until - now, 1)
+        return res
+
 
 
 # Global singleton

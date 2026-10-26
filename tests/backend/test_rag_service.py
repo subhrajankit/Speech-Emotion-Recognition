@@ -28,7 +28,6 @@ def populated_rag_service(tmp_path):
     service = RAGService(
         index_dir=str(index_dir),
         similarity_threshold=0.20,
-        mock_models=True,
     )
     service.initialize()
     return service
@@ -89,7 +88,7 @@ async def test_knowledge_fallback_when_index_unloaded():
     When vector store is unindexed or missing, knowledge query gracefully
     degrades to chat without crashing or fabricating citations.
     """
-    empty_service = RAGService(index_dir="non_existent_dir_123", mock_models=True)
+    empty_service = RAGService(index_dir="non_existent_dir_123")
     empty_service.initialize()
 
     turn_res = await empty_service.process_turn("According to the document, what is the policy?")

@@ -533,6 +533,7 @@ def test_websocket_tts_streaming_order(client, monkeypatch):
     async def sse_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=sse_content)
 
+    monkeypatch.setattr(settings, "TTS_ENABLED", True)
     monkeypatch.setattr(llm_service, "_custom_client", httpx.AsyncClient(transport=httpx.MockTransport(sse_handler)))
     monkeypatch.setattr(tts_service, "_engine_override", FakeEngineForTests())
 
@@ -606,6 +607,7 @@ def test_websocket_tts_failure_isolation(client, monkeypatch):
     async def sse_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=sse_content)
 
+    monkeypatch.setattr(settings, "TTS_ENABLED", True)
     monkeypatch.setattr(llm_service, "_custom_client", httpx.AsyncClient(transport=httpx.MockTransport(sse_handler)))
     monkeypatch.setattr(tts_service, "_engine_override", FakeEngineForTests(
         fail_with=TTSError("Simulated CUDA Out of Memory in TTS")

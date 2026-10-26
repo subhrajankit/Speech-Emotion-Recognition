@@ -250,7 +250,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                 pass
             active_llm_task = None
 
-    vad = SileroVAD(threshold=settings.VAD_THRESHOLD, mock=settings.MOCK_MODELS)
+    vad = SileroVAD(threshold=settings.VAD_THRESHOLD)
     segmenter = VADSpeechSegmenter(
         vad=vad,
         silence_timeout_ms=700,

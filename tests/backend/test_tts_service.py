@@ -147,7 +147,8 @@ def test_indic_parler_supported_languages():
 # 5. Lazy Loading & Truthful Error Reporting
 # ==============================================================================
 
-def test_tts_service_lazy_loading_invariant():
+def test_tts_service_lazy_loading_invariant(monkeypatch):
+    monkeypatch.setattr(settings, "TTS_ENABLED", True)
     service = TTSService()
     assert not service.is_loaded
     health = service.get_health_status()
@@ -161,6 +162,7 @@ async def test_tts_service_uninstalled_honest_failure(monkeypatch):
     When real packages/model are missing, the service raises TTSError honestly.
     No mock synthesizer is used in runtime code.
     """
+    monkeypatch.setattr(settings, "TTS_ENABLED", True)
     service = TTSService()
     # Force worker_python to nonexistent to simulate missing dependencies
     monkeypatch.setattr(settings, "TTS_WORKER_PYTHON", "nonexistent/python.exe")
@@ -213,7 +215,8 @@ class FakeEngineForTests:
 
 
 @pytest.mark.asyncio
-async def test_fake_engine_chunk_ordering_and_metadata():
+async def test_fake_engine_chunk_ordering_and_metadata(monkeypatch):
+    monkeypatch.setattr(settings, "TTS_ENABLED", True)
     service = TTSService()
     fake = FakeEngineForTests()
     service._engine_override = fake
@@ -239,7 +242,8 @@ async def test_fake_engine_chunk_ordering_and_metadata():
 
 
 @pytest.mark.asyncio
-async def test_fake_engine_simulated_oom_isolation():
+async def test_fake_engine_simulated_oom_isolation(monkeypatch):
+    monkeypatch.setattr(settings, "TTS_ENABLED", True)
     service = TTSService()
     service._engine_override = FakeEngineForTests(
         fail_with=RuntimeError("CUDA out of memory. Tried to allocate 512.00 MiB")
