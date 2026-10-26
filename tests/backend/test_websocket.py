@@ -4,11 +4,13 @@ Covers protocol v1 handshake, audio streaming, speech_result emission,
 keepalives, buffer limits, and authentication gating.
 """
 
+import json
 from pathlib import Path
 import numpy as np
 import soundfile as sf
 import pytest
 from starlette.websockets import WebSocketDisconnect
+
 
 from backend.app.core.config import settings
 from backend.app.core.security import create_access_token
@@ -508,4 +510,144 @@ def test_websocket_llm_stream_cut_mid_reply(client, monkeypatch):
         # Socket survives
         ws.send_json({"type": "ping"})
         assert ws.receive_json().get("type") == "pong"
+
+
+def test_websocket_tts_streaming_order(client, monkeypatch):
+    """
+    Acceptance Criteria:
+    Verifies full event sequence:
+    speech_result -> llm_delta... -> llm_done -> tts_chunk (JSON) -> tts_chunk (binary) -> tts_done.
+    Uses FakeEngineForTests for test-only isolated audio generation.
+    """
+    import httpx
+    from backend.app.services.llm_service import llm_service
+    from backend.app.services.tts_service import tts_service
+    from tests.backend.test_tts_service import FakeEngineForTests
+
+    sse_content = (
+        'data: {"choices":[{"delta":{"content":"First sentence. "}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"Second sentence."}}]}\n\n'
+        'data: [DONE]\n\n'
+    )
+
+    async def sse_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=sse_content)
+
+    monkeypatch.setattr(llm_service, "_custom_client", httpx.AsyncClient(transport=httpx.MockTransport(sse_handler)))
+    monkeypatch.setattr(tts_service, "_engine_override", FakeEngineForTests())
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
+        assert ws.receive_json().get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            pcm_bytes = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16).tobytes()
+
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        received_events = []
+        binary_frames = []
+
+        # Read frames until tts_done is encountered
+        for _ in range(25):
+            msg = ws.receive()
+            if "text" in msg and msg["text"]:
+                data = json.loads(msg["text"])
+                received_events.append(data)
+                if data.get("type") == "tts_done":
+                    break
+            elif "bytes" in msg and msg["bytes"]:
+                binary_frames.append(msg["bytes"])
+
+        types = [e.get("type") for e in received_events]
+        assert "speech_result" in types
+        assert "llm_done" in types
+        assert "tts_chunk" in types
+        assert "tts_done" in types
+
+        # Check strict ordering
+        speech_idx = types.index("speech_result")
+        llm_idx = types.index("llm_done")
+        tts_first_idx = types.index("tts_chunk")
+        tts_done_idx = types.index("tts_done")
+
+        assert speech_idx < llm_idx < tts_first_idx < tts_done_idx
+
+        # Binary WAV frames must accompany tts_chunk
+        assert len(binary_frames) == 2
+        for b in binary_frames:
+            assert b[:4] == b"RIFF"
+
+
+def test_websocket_tts_failure_isolation(client, monkeypatch):
+    """
+    Acceptance Criteria: Failure-injection test.
+    TTS fails or runs out of memory, yet speech_result and llm_done are still delivered.
+    Client receives {"type": "error", "code": "tts_unavailable"}.
+    Socket remains open and responsive to subsequent pings.
+    """
+    import httpx
+    from backend.app.services.llm_service import llm_service
+    from backend.app.services.tts_service import tts_service, TTSError
+    from tests.backend.test_tts_service import FakeEngineForTests
+
+    sse_content = (
+        'data: {"choices":[{"delta":{"content":"Hello world."}}]}\n\n'
+        'data: [DONE]\n\n'
+    )
+
+    async def sse_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=sse_content)
+
+    monkeypatch.setattr(llm_service, "_custom_client", httpx.AsyncClient(transport=httpx.MockTransport(sse_handler)))
+    monkeypatch.setattr(tts_service, "_engine_override", FakeEngineForTests(
+        fail_with=TTSError("Simulated CUDA Out of Memory in TTS")
+    ))
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
+        assert ws.receive_json().get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            pcm_bytes = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16).tobytes()
+
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+
+        received_events = []
+        for _ in range(15):
+            try:
+                ev = ws.receive_json()
+                received_events.append(ev)
+                if ev.get("type") == "error" and ev.get("code") == "tts_unavailable":
+                    break
+            except Exception:
+                break
+
+        types = [e.get("type") for e in received_events]
+        assert "speech_result" in types, "speech_result MUST still be delivered"
+        assert "llm_done" in types, "llm_done MUST still be delivered"
+        assert "error" in types
+
+        err_event = next(e for e in received_events if e.get("type") == "error")
+        assert err_event.get("code") == "tts_unavailable"
+
+        # Socket remains open and healthy
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json().get("type") == "pong"
+
 

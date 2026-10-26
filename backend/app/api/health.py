@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from backend.app.services.speech_service import speech_service
 from backend.app.services.llm_service import llm_service
 from backend.app.services.rag_service import rag_service
+from backend.app.services.tts_service import tts_service
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["health"])
 async def health_check():
     """
     Returns system health status:
-    - per-component status: asr, emotion, llm, rag, and placeholders for tts, db
+    - per-component status: asr, emotion, llm, rag, tts, and placeholder for db
     - overall status: 'ok' or 'degraded' (never fails just because optional components are down)
     """
     health = speech_service.get_health_status()
@@ -27,4 +28,9 @@ async def health_check():
     rag_report = rag_service.get_health_status()
     health["components"]["rag"] = rag_report["status"]
     health["details"]["rag"] = rag_report
+
+    tts_report = tts_service.get_health_status()
+    health["components"]["tts"] = tts_report.get("status", "unavailable")
+    health["details"]["tts"] = tts_report
     return health
+

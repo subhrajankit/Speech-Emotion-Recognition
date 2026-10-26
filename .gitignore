@@ -22,7 +22,10 @@ wheels/
 *.egg
 venv/
 .venv/
+.venv*/
 ENV/
+scripts/backups/
+
 
 # Node / Frontend
 node_modules/

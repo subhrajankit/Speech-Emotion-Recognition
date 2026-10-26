@@ -445,4 +445,31 @@
   - Guaranteed fit within 2048-token context window without context truncation.
   - Verified import isolation: speech perception and emotion modules remain completely independent of RAG.
 
+## ADR 029: Indic Parler-TTS Integration, Isolated Virtual Environment (.venv-tts), and 4GB VRAM Coexistence Strategy (Phase 8 Migration)
+- **Context**:
+  Integrating `ai4bharat/indic-parler-tts` presents two critical engineering challenges:
+  1. **Dependency Incompatibility**: `parler-tts` requires `transformers<=4.46.1` and `huggingface_hub-0.36.2`, which directly conflict with and would downgrade the main environment's packages (`huggingface_hub==1.31.0`, `protobuf==7.36.1`), threatening SenseVoiceSmall and IndicConformer stability.
+  2. **Hardware Constraints**: The target development system is an NVIDIA RTX 2050 Mobile with 4,096 MiB (4 GB) total VRAM. On CUDA, Indic Parler-TTS requires 3,873 MiB after model load and reaches peak VRAM of 3,915 MiB (95.6%). When running concurrently with `llama-server` (Qwen3-1.7B, requiring ~1,479 MiB VRAM), both models cannot fit simultaneously in 4 GB VRAM without triggering CUDA Out-Of-Memory (OOM).
+- **Decision**:
+  - **Isolated Virtual Environment (`.venv-tts`)**:
+    Created a separate virtual environment (`.venv-tts`) isolating `torch-2.14.1+cu126`, `torchaudio`, and `parler-tts`. A dedicated subprocess worker (`backend/app/services/tts_worker.py`) communicates over JSON lines and binary standard I/O with `backend/app/services/tts_service.py`. This guarantees zero dependency leakage into the primary ASR/SER environment.
+  - **Zero Runtime Mock Policy**:
+    No fallback tones or fake synthesizers in production code (`tts_service.py`). If the model or worker is missing, `TTSError` / `TTSOOMError` is raised, emitting an honest `tts_unavailable` error event to WebSocket clients. Fake engines (`FakeEngineForTests`) are permitted strictly within `tests/` for unit testing protocol framing and chunk ordering.
+  - **Lazy Loading & Concurrency Limit 1**:
+    `TTSService` loads the model strictly on the first request (`lazy loading`), never on server startup, bounded by `asyncio.Semaphore(1)`.
+  - **Sentence Chunking & Text Cleaning**:
+    LLM token streams are cleaned of `<think>` tags, markdown, citations, and emojis, and split on English (`.`, `!`, `?`) and Hindi danda (`।`, `॥`) punctuation to enable pipelined sentence-by-sentence synthesis.
+  - **Failure Isolation & Non-Fatal Health Checks**:
+    TTS failures never crash the backend or drop `speech_result`. If TTS fails, `speech_result` and `llm_done` still complete successfully, and `/api/health` reports `"tts": "unavailable"` while overall health remains `"ok"` (or `"degraded"`).
+  - **Hardware Coexistence & Deployment Strategy for 4 GB GPUs**:
+    Based on measured empirical benchmarks:
+    - **GPU Synthesis**: RTF 7.12 (Hindi) and 13.15 (English), 3,915 MiB peak VRAM.
+    - **CPU Synthesis**: RTF 18.73 (Hindi) and 18.72 (English), 189 MiB peak VRAM.
+    - Strategy: On 4 GB GPUs, LLM remains on GPU (`llama-server`, 1.48 GB VRAM) while TTS can either be configured on CPU (`TTS_DEVICE="cpu"`) for concurrent execution, or sequential GPU swapping can be used, or LLM can be offloaded to cloud (Gemini).
+- **Consequences**:
+  - Complete protection of main environment dependencies.
+  - Honest, robust error handling with zero silent mocks.
+  - Clear empirical guidelines for deploying on constrained 4 GB laptops.
+
+
 

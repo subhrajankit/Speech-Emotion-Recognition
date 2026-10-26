@@ -14,6 +14,9 @@ def __getattr__(name: str):
     if name in ("rag_service", "RAGService", "RAGTurnResult"):
         from . import rag_service as _rag_mod
         return getattr(_rag_mod, name)
+    if name in ("tts_service", "TTSService", "TTSChunk", "TTSError"):
+        from . import tts_service as _tts_mod
+        return getattr(_tts_mod, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -30,4 +33,9 @@ __all__ = [
     "rag_service",
     "RAGService",
     "RAGTurnResult",
+    "tts_service",
+    "TTSService",
+    "TTSChunk",
+    "TTSError",
 ]
+

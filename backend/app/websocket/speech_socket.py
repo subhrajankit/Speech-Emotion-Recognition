@@ -23,8 +23,10 @@ from backend.app.services.llm_service import (
 )
 from backend.app.services.prompt_builder import PromptBuilder
 from backend.app.services.rag_service import rag_service
+from backend.app.services.tts_service import tts_service, TTSError
 
 logger = logging.getLogger("voicesense.websocket")
+
 
 router = APIRouter(tags=["websocket"])
 
@@ -120,9 +122,65 @@ async def handle_llm_turn(
         if full_text:
             conversation_history.append({"role": "assistant", "content": full_text})
 
+        # Phase 8: Indic Parler-TTS Streaming (sentence-level audio chunks)
+        if full_text:
+            try:
+                chunk_idx = 0
+                total_duration_ms = 0.0
+                async for tts_chunk in tts_service.synthesize(
+                    text=full_text,
+                    language=language,
+                    emotion=emotion,
+                ):
+                    # 1. JSON metadata header frame
+                    header_sent = await safe_send_json(websocket, {
+                        "type": "tts_chunk",
+                        "index": tts_chunk.sentence_index,
+                        "sample_rate": tts_chunk.sample_rate,
+                        "text": tts_chunk.sentence_text,
+                        "format": "wav",
+                    })
+                    if not header_sent:
+                        return
+
+                    # 2. Binary audio frame (self-contained 16-bit PCM WAV)
+                    try:
+                        await websocket.send_bytes(tts_chunk.audio)
+                    except (WebSocketDisconnect, RuntimeError):
+                        return
+
+                    chunk_idx += 1
+                    total_duration_ms += tts_chunk.audio_duration_ms
+
+                if chunk_idx > 0:
+                    await safe_send_json(websocket, {
+                        "type": "tts_done",
+                        "total_chunks": chunk_idx,
+                        "total_duration_ms": round(total_duration_ms, 1),
+                    })
+
+            except asyncio.CancelledError:
+                logger.info("TTS synthesis cancelled.")
+                raise
+            except TTSError as tts_err:
+                logger.warning(f"TTS synthesis unavailable or failed: {tts_err}")
+                await safe_send_json(websocket, {
+                    "type": "error",
+                    "code": "tts_unavailable",
+                    "message": str(tts_err),
+                })
+            except Exception as tts_err:
+                logger.error(f"Unexpected TTS error: {tts_err}")
+                await safe_send_json(websocket, {
+                    "type": "error",
+                    "code": "tts_unavailable",
+                    "message": f"TTS synthesis error: {tts_err}",
+                })
+
     except asyncio.CancelledError:
-        logger.info("In-flight LLM stream cancelled (barge-in / disconnect).")
+        logger.info("In-flight turn stream cancelled (barge-in / disconnect).")
         raise
+
     except (LLMUnavailable, LLMTimeout, LLMResponseError, LLMError) as e:
         logger.warning(f"LLM generation failed: {e}")
         await safe_send_json(websocket, {

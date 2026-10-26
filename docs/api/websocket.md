@@ -153,49 +153,83 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-8. **Status Notice (`status`)**:
-   Emitted for non-fatal runtime notices, such as when a knowledge query falls back to direct chat due to missing vector indices:
+8. **TTS Audio Stream Chunk (`tts_chunk` + Binary Frame)**:
+   Emitted as each sentence is synthesized by Indic Parler-TTS.
+   Each chunk uses a deterministic **two-frame sequence**:
+   1. **JSON Metadata Header**: A text JSON frame containing sentence metadata:
+      ```json
+      {
+        "type": "tts_chunk",
+        "index": 0,
+        "sample_rate": 44100,
+        "text": "Hello, how can I help you today?",
+        "format": "wav"
+      }
+      ```
+   2. **Binary Audio Frame**: Follows immediately as a raw binary WebSocket frame containing a self-contained 16-bit PCM WAV audio file (with standard 44-byte RIFF/WAVE header), decoded natively by client audio pipelines (e.g. `AudioContext.decodeAudioData`).
+   - Sample rate: 44,100 Hz (44.1 kHz, mono).
+   - Encoding: 16-bit signed integer linear PCM (`format: "wav"`).
+
+9. **TTS Synthesis Completion (`tts_done`)**:
+   Emitted once all synthesized sentences for the turn have finished streaming:
    ```json
    {
-     "type": "status",
-     "status": "rag_fallback",
-     "message": "Knowledge base index unavailable or no relevant chunks found; falling back to direct chat."
+     "type": "tts_done",
+     "total_chunks": 2,
+     "total_duration_ms": 3450.0
    }
    ```
 
-7. **Error Frame (`error`)**:
-   Emitted upon protocol violation, buffer overflow, or upstream/service error:
-   ```json
-   {
-     "type": "error",
-     "code": "BUFFER_OVERFLOW",
-     "message": "Connection buffer limit (5242880 bytes) exceeded."
-   }
-   ```
-   Or when LLM is unreachable, timed out, or in cool-down:
-   ```json
-   {
-     "type": "error",
-     "code": "llm_unavailable",
-     "message": "Cannot connect to local LLM server at http://127.0.0.1:8080/v1/chat/completions"
-   }
-   ```
-   > **Note**: An `llm_unavailable` error keeps the WebSocket connection open so subsequent voice turns can still be transcribed.
+10. **Status Notice (`status`)**:
+    Emitted for non-fatal runtime notices, such as when a knowledge query falls back to direct chat due to missing vector indices:
+    ```json
+    {
+      "type": "status",
+      "status": "rag_fallback",
+      "message": "Knowledge base index unavailable or no relevant chunks found; falling back to direct chat."
+    }
+    ```
 
-8. **Cancellation & Ordering Guarantees**:
-   - `speech_result` is always dispatched BEFORE any LLM request is started and never waits on the LLM.
-   - If the client disconnects or transmits a new `start` control frame while `llm_delta` tokens are streaming, the server immediately cancels the in-flight generation task and closes the upstream HTTP stream.
+11. **Error Frame (`error`)**:
+    Emitted upon protocol violation, buffer overflow, or upstream/service error:
+    ```json
+    {
+      "type": "error",
+      "code": "BUFFER_OVERFLOW",
+      "message": "Connection buffer limit (5242880 bytes) exceeded."
+    }
+    ```
+    Or when LLM is unreachable, timed out, or in cool-down:
+    ```json
+    {
+      "type": "error",
+      "code": "llm_unavailable",
+      "message": "Cannot connect to local LLM server at http://127.0.0.1:8080/v1/chat/completions"
+    }
+    ```
+    Or when TTS synthesis is unavailable or encounters an error (including CUDA OOM):
+    ```json
+    {
+      "type": "error",
+      "code": "tts_unavailable",
+      "message": "TTS model or dependencies unavailable; continuing in text-only mode."
+    }
+    ```
+    > **Note**: An `llm_unavailable` or `tts_unavailable` error keeps the WebSocket connection open so subsequent voice turns can still be transcribed.
+
+12. **Cancellation & Ordering Guarantees**:
+    - `speech_result` is always dispatched BEFORE any LLM or TTS request is started and never waits on them.
+    - Full event ordering: `speech_result` → `llm_delta...` → `llm_done` → `tts_chunk (JSON)` → `tts_chunk (binary)` ... → `tts_done`.
+    - If the client disconnects or transmits a new `start` control frame while `llm_delta` or `tts_chunk` streams are in-flight, the server immediately cancels the active generation/synthesis task, closes upstream streams, and discards queued audio chunks.
 
 ---
 
 ## 3. Reserved Message Types
 
-The following message types are reserved for downstream phases (TTS audio streaming) and must be ignored safely without raising errors or dropping connections:
-- `tts_chunk`
-- `tts_done`
+The following message types are reserved for telemetry and client controls:
 - `status`
 
-Any unknown message types received from the client are also safely ignored.
+Any unknown message types received from the client are safely ignored.
 
 ---
 

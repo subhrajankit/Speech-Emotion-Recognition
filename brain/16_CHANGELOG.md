@@ -2,6 +2,43 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 8 - Target Migration] - Indic Parler-TTS Integration, Sentence Streaming & Failure Isolation (2026-10-26)
+- **Isolated Virtual Environment (`.venv-tts`)**:
+  - Saved `pip freeze` backup to `scripts/backups/env-before-tts.txt` (UTF-8).
+  - Dry run detected that `parler-tts` (`transformers<=4.46.1`) conflicts with main environment dependencies (`huggingface_hub==1.31.0`, `protobuf==7.36.1`).
+  - Created isolated virtual environment `.venv-tts` with PyTorch 2.14.1+cu126, torchaudio 2.11.0+cu126, and `parler-tts` from official GitHub source with `soundfile`.
+- **Hugging Face Authentication & Model Caching**:
+  - Downloaded `ai4bharat/indic-parler-tts` (937M params, `model.safetensors` 3.75 GB) into local Hugging Face hub cache.
+- **Decoupled Real Indic Parler-TTS Service (`backend/app/services/tts_service.py`, `backend/app/services/tts_worker.py`)**:
+  - Standalone worker subprocess `tts_worker.py` executed via `.venv-tts/Scripts/python.exe`.
+  - Lazy model loading invariant: zero initialization on server startup; loads on the first synthesis request.
+  - Concurrency limiter: `asyncio.Semaphore(1)` ensuring single-synthesis execution without racing.
+  - Text normalization (`clean_tts_text`): strips `<think>...</think>`, markdown formatting, source citations (`[doc]`), emojis, URLs, and excess whitespace.
+  - Multilingual sentence chunker (`split_sentences`): splits on English punctuation (`.`, `!`, `?`) and Hindi purna viram (`।` / `॥`), preserving abbreviations like `1.7B` and `Dr.`.
+  - Natural language voice conditioning (`build_voice_description`): constructs conditioning prompts with emotion styling disabled by default per Phase 8 rules (`TTS_EMOTION_STYLING_ENABLED=False`).
+  - Honest failure reporting: zero runtime fake synthesizers or silent mocks; raises typed `TTSError` / `TTSOOMError` reporting `tts_unavailable` honest events.
+- **WebSocket Protocol v1 Streaming Integration (`backend/app/websocket/speech_socket.py`, `docs/api/websocket.md`)**:
+  - Sentence-by-sentence streaming: segments streamed LLM tokens into sentence chunks and queues synthesis concurrently with subsequent token generation.
+  - Framing: emits metadata `{"type": "tts_chunk", "chunk_index": i, "total_chunks": null, "sample_rate": 44100, "text": "..."}` followed immediately by binary RIFF WAV frame over WebSocket. Emits `{"type": "tts_done", "total_chunks": N}` upon completion.
+  - Cancellation & barge-in: client disconnect or transmitting a new `"start"` control frame immediately cancels active TTS tasks and terminates in-flight subprocesses.
+  - Failure isolation: if TTS fails or encounters OOM, catches `TTSError`, emits `{"type": "error", "code": "tts_unavailable"}`, and keeps socket open without crashing server or dropping `speech_result`.
+- **Hardware Benchmarks on Target Dev Laptop (RTX 2050 Mobile 4 GB VRAM / 16 GB RAM)**:
+  - GPU Inference:
+    - Model load time: 2.14 s.
+    - Initial VRAM: 91 MiB $\to$ VRAM after model load: 3,873 MiB (+3,782 MiB delta; PyTorch allocated: 3,652 MiB).
+    - Peak VRAM during synthesis: 3,915 MiB / 4,096 MiB (95.6% capacity).
+    - English sentence (6.58 s audio): Synthesis time 86.58 s (RTF 13.15).
+    - Hindi sentence (4.60 s audio): Synthesis time 32.72 s (RTF 7.12).
+  - CPU Inference:
+    - Model load time: 18.63 s.
+    - VRAM footprint: 0 MiB delta (Peak VRAM: 189 MiB).
+    - English sentence (6.72 s audio): Synthesis time 125.88 s (RTF 18.72).
+    - Hindi sentence (4.84 s audio): Synthesis time 90.70 s (RTF 18.73).
+  - Generated real audio samples saved to `tests/samples/output_english_gpu.wav`, `tests/samples/output_hindi_gpu.wav`, `tests/samples/output_english_cpu.wav`, and `tests/samples/output_hindi_cpu.wav`.
+- **Verification Suite**:
+  - 136 passed, 2 skipped across `tests/ai`, `tests/backend`, and `tests/rag`. Zero errors.
+  - AST automated isolation test confirms zero imports of `tts_service` or `tts` from `ai/` or `speech_service.py`.
+
 ## [Phase 7 - Target Migration] - Intent-Gated RAG & Knowledge Retrieval (2026-10-26)
 - **Intent Router Hard Gate (`rag/intent_router.py`)**:
   - Implemented 2-tier hybrid intent classifier: Tier 1 regex rules for English, Hindi (Devanagari), and Hinglish (Latin); Tier 2 exemplar cosine similarity using multilingual-e5-small query embeddings; Tier 3 unconditional fallback to `chat`.

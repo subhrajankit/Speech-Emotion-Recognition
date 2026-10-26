@@ -79,11 +79,14 @@ class Settings(BaseSettings):
 
     # TTS Settings (Indic Parler-TTS — ai4bharat/indic-parler-tts)
     TTS_MODEL_ID: str = "ai4bharat/indic-parler-tts"
-    TTS_DEVICE: str = "cpu"
+    TTS_DEVICE: str = "cuda"  # switchable to "cpu"
     TTS_SAMPLE_RATE: int = 44100
-    TTS_EMOTION_STYLING_ENABLED: bool = True
+    TTS_EMOTION_STYLING_ENABLED: bool = False  # Off by default per Phase 8 spec
     TTS_DEFAULT_SPEAKER: str = "Aditi"
     TTS_MAX_SENTENCE_LENGTH: int = 500
+    TTS_CONCURRENCY_LIMIT: int = 1
+    TTS_WORKER_PYTHON: str = ".venv-tts/Scripts/python.exe"
+
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
