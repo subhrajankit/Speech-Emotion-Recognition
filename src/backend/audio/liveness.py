@@ -24,6 +24,18 @@ class LivenessResult:
     score: float
     details: Dict[str, Any]
 
+    @property
+    def is_suspicious(self) -> bool:
+        return not self.is_live
+
+    @property
+    def flatness(self) -> float:
+        return self.details.get("spectral_flatness", 0.0)
+
+    @property
+    def rms_variance(self) -> float:
+        return self.details.get("energy_rms_std", 0.0)
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 

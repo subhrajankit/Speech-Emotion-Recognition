@@ -35,10 +35,22 @@ def get_nvidia_smi_vram():
         return 0.0, 0.0
 
 
-def benchmark_device(device_name: str, out_prefix: str):
+def benchmark_device(device_name: str, dtype_name: str = "float32", out_prefix: str = "gpu"):
     print(f"\n========================================================")
-    print(f"BENCHMARKING INDIC PARLER-TTS ON: {device_name.upper()}")
+    print(f"BENCHMARKING INDIC PARLER-TTS ON: {device_name.upper()} ({dtype_name.upper()})")
     print(f"========================================================")
+
+    if device_name == "cpu":
+        print(f"PyTorch CPU threads: {torch.get_num_threads()} (logical cores: {os.cpu_count()})")
+
+    torch_dtype_map = {
+        "float32": torch.float32,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+    }
+    selected_dtype = torch_dtype_map.get(dtype_name.lower(), torch.float32)
 
     vram_before, vram_total = get_nvidia_smi_vram()
     print(f"Initial VRAM via nvidia-smi: {vram_before:.0f} MiB / {vram_total:.0f} MiB")
@@ -48,12 +60,16 @@ def benchmark_device(device_name: str, out_prefix: str):
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     description_tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = ParlerTTSForConditionalGeneration.from_pretrained(model_id)
+    model = ParlerTTSForConditionalGeneration.from_pretrained(
+        model_id,
+        torch_dtype=selected_dtype if device_name == "cuda" else torch.float32,
+    )
     model.to(device_name)
     model.eval()
 
     load_time_sec = time.perf_counter() - t_load_start
     print(f"Model load time: {load_time_sec:.2f} s")
+    print(f"Model loaded dtype: {model.dtype}")
 
     vram_loaded, _ = get_nvidia_smi_vram()
     delta_vram = vram_loaded - vram_before
@@ -88,17 +104,19 @@ def benchmark_device(device_name: str, out_prefix: str):
         torch.cuda.synchronize()
     en_synth_sec = time.perf_counter() - t0
 
-    en_audio = en_gen.cpu().numpy().squeeze()
+    en_audio = en_gen.to(torch.float32).cpu().numpy().squeeze()
     en_out_path = f"tests/samples/output_english_{out_prefix}.wav"
     sf.write(en_out_path, en_audio, sample_rate, format="WAV", subtype="PCM_16")
 
     en_audio_dur_sec = len(en_audio) / sample_rate
     en_rtf = en_synth_sec / en_audio_dur_sec if en_audio_dur_sec > 0 else 0.0
+    en_peak_amp = float(np.max(np.abs(en_audio))) if len(en_audio) > 0 else 0.0
 
     print(f"Saved: {en_out_path}")
     print(f"Audio duration: {en_audio_dur_sec:.2f} s")
     print(f"Synthesis time (TTFC): {en_synth_sec:.3f} s ({en_synth_sec * 1000:.0f} ms)")
     print(f"Real-Time Factor (RTF): {en_rtf:.3f} ({'Faster than real-time' if en_rtf < 1.0 else 'Slower than real-time'})")
+    print(f"Peak amplitude: {en_peak_amp:.4f}")
 
     # 3. Hindi Benchmark
     print("\n--- Synthesizing Hindi Sentence ---")
@@ -113,17 +131,19 @@ def benchmark_device(device_name: str, out_prefix: str):
         torch.cuda.synchronize()
     hi_synth_sec = time.perf_counter() - t0
 
-    hi_audio = hi_gen.cpu().numpy().squeeze()
+    hi_audio = hi_gen.to(torch.float32).cpu().numpy().squeeze()
     hi_out_path = f"tests/samples/output_hindi_{out_prefix}.wav"
     sf.write(hi_out_path, hi_audio, sample_rate, format="WAV", subtype="PCM_16")
 
     hi_audio_dur_sec = len(hi_audio) / sample_rate
     hi_rtf = hi_synth_sec / hi_audio_dur_sec if hi_audio_dur_sec > 0 else 0.0
+    hi_peak_amp = float(np.max(np.abs(hi_audio))) if len(hi_audio) > 0 else 0.0
 
     print(f"Saved: {hi_out_path}")
     print(f"Audio duration: {hi_audio_dur_sec:.2f} s")
     print(f"Synthesis time (TTFC): {hi_synth_sec:.3f} s ({hi_synth_sec * 1000:.0f} ms)")
     print(f"Real-Time Factor (RTF): {hi_rtf:.3f} ({'Faster than real-time' if hi_rtf < 1.0 else 'Slower than real-time'})")
+    print(f"Peak amplitude: {hi_peak_amp:.4f}")
 
     vram_peak, _ = get_nvidia_smi_vram()
     print(f"\nPeak VRAM during inference: {vram_peak:.0f} MiB")
@@ -137,19 +157,27 @@ def benchmark_device(device_name: str, out_prefix: str):
 
     return {
         "device": device_name,
+        "dtype": str(selected_dtype),
         "load_time_sec": load_time_sec,
         "vram_delta_mib": delta_vram,
         "vram_peak_mib": vram_peak,
+        "en_path": en_out_path,
         "en_synth_ms": en_synth_sec * 1000,
         "en_audio_sec": en_audio_dur_sec,
         "en_rtf": en_rtf,
+        "en_peak_amp": en_peak_amp,
+        "hi_path": hi_out_path,
         "hi_synth_ms": hi_synth_sec * 1000,
         "hi_audio_sec": hi_audio_dur_sec,
         "hi_rtf": hi_rtf,
+        "hi_peak_amp": hi_peak_amp,
     }
 
 
 if __name__ == "__main__":
+    import numpy as np
     device = sys.argv[1] if len(sys.argv) > 1 else "cuda"
-    prefix = sys.argv[2] if len(sys.argv) > 2 else device
-    benchmark_device(device, prefix)
+    dtype = sys.argv[2] if len(sys.argv) > 2 else "float32"
+    prefix = sys.argv[3] if len(sys.argv) > 3 else f"{device}_{dtype}"
+    benchmark_device(device, dtype, prefix)
+

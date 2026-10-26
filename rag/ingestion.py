@@ -11,6 +11,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Optional, Any
 
 from rag.chunking import DocumentChunker
 from rag.embeddings import MultilingualE5Embeddings, DEFAULT_MODEL_ID, EMBEDDING_DIMENSION
@@ -29,7 +30,7 @@ def run_ingestion(
     chunk_size: int = 500,
     chunk_overlap: int = 100,
     model_id: str = DEFAULT_MODEL_ID,
-    mock: bool = False,
+    embedder: Optional[Any] = None,
 ) -> int:
     """
     Executes end-to-end ingestion pipeline:
@@ -72,7 +73,8 @@ def run_ingestion(
     # 2. Generate embeddings
     logger.info(f"Generating embeddings for {chunk_count} passages (prefix='passage: ')...")
     emb_start = time.perf_counter()
-    embedder = MultilingualE5Embeddings(model_id=model_id, mock=mock)
+    if embedder is None:
+        embedder = MultilingualE5Embeddings(model_id=model_id)
     passages = [c["text"] for c in chunks]
     embeddings = embedder.embed_passages(passages)
     emb_duration = time.perf_counter() - emb_start
@@ -113,10 +115,8 @@ def main():
     parser.add_argument("--docs", default="rag/documents", help="Path to input documents directory.")
     parser.add_argument("--index-dir", default="rag/vectorstore", help="Path to output vectorstore directory.")
     parser.add_argument("--chunk-size", type=int, default=500, help="Max chunk size in characters.")
-    parser.add_argument("--chunk-overlap", type=int, default=100, help="Overlap between consecutive chunks.")
-    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="Hugging Face embedding model ID.")
-    parser.add_argument("--mock", action="store_true", help="Use deterministic mock embeddings for testing.")
-
+    parser.add_argument("--chunk-overlap", type=int, default=100, help="Overlap size in characters.")
+    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="Embedding model ID.")
     args = parser.parse_args()
     try:
         count = run_ingestion(
@@ -125,7 +125,6 @@ def main():
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap,
             model_id=args.model_id,
-            mock=args.mock,
         )
         if count == 0:
             sys.exit(1)

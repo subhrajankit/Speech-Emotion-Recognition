@@ -122,3 +122,30 @@ class FakeSileroVAD:
 
     def reset(self):
         pass
+
+
+class FakeEmbeddings:
+    """Explicit test double for sentence embeddings in unit/integration tests."""
+    def __init__(self, model_id: str = "test-double-e5", dimension: int = 384):
+        self.model_id = model_id
+        self.dimension = dimension
+        self.is_loaded = True
+
+    def _embed_str(self, text: str) -> np.ndarray:
+        import hashlib
+        h = hashlib.sha256(text.encode("utf-8")).digest()
+        raw = np.frombuffer(h, dtype=np.uint8).astype(np.float32)
+        reps = int(np.ceil(self.dimension / len(raw)))
+        vec = np.tile(raw, reps)[:self.dimension]
+        norm = np.linalg.norm(vec)
+        return (vec / (norm + 1e-9)).astype(np.float32)
+
+    def embed_query(self, query: str) -> np.ndarray:
+        return self._embed_str(f"query: {query.strip()}")
+
+    def embed_passages(self, passages: List[str]) -> np.ndarray:
+        return np.array([self._embed_str(f"passage: {p.strip()}") for p in passages], dtype=np.float32)
+
+    def embed_documents(self, documents: List[str]) -> np.ndarray:
+        return self.embed_passages(documents)
+

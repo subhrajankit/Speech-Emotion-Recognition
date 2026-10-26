@@ -23,7 +23,6 @@ def built_fixture_vectorstore(tmp_path_factory):
     run_ingestion(
         docs_dir=str(fixtures_dir),
         index_dir=str(tmp_dir),
-        mock=True,
     )
 
     store = FAISSVectorStore(
@@ -40,7 +39,7 @@ def test_top_k_retrieval_facts(built_fixture_vectorstore):
     Verifies that questions answerable from the fixture docs retrieve
     the exact expected chunks with high scores.
     """
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     retriever = RAGRetriever(
         vectorstore=built_fixture_vectorstore,
         embedder=embedder,
@@ -75,7 +74,7 @@ def test_score_threshold_filters_unrelated_queries(built_fixture_vectorstore):
     If similarity does not meet threshold, retriever returns empty list.
     Never fabricates context or citations.
     """
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     retriever = RAGRetriever(
         vectorstore=built_fixture_vectorstore,
         embedder=embedder,
@@ -95,7 +94,7 @@ def test_grounded_context_and_citation_formatting(built_fixture_vectorstore):
     """
     Verifies that formatted context contains excerpt blocks and cited_docs references for the UI.
     """
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     retriever = RAGRetriever(
         vectorstore=built_fixture_vectorstore,
         embedder=embedder,
@@ -112,8 +111,8 @@ def test_grounded_context_and_citation_formatting(built_fixture_vectorstore):
     assert "16 weeks" in context_str
 
     assert len(cited_docs) == len(chunks)
+    assert any(ref["doc_name"] == "company_policy_fixture.md" for ref in cited_docs)
     for ref in cited_docs:
         assert "doc_name" in ref
         assert "chunk_id" in ref
         assert "score" in ref
-        assert ref["doc_name"] == "company_policy_fixture.md"

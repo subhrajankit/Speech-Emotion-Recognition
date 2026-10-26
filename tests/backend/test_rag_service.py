@@ -13,16 +13,20 @@ from backend.app.services.rag_service import RAGService, rag_service
 from rag.ingestion import run_ingestion
 
 
+from tests.test_doubles import FakeEmbeddings
+
+
 @pytest.fixture
 def populated_rag_service(tmp_path):
     """Initializes a RAGService with fixture index."""
     fixtures_dir = Path("tests/fixtures/sample_docs")
     index_dir = tmp_path / "rag_service_store"
 
+    fake_emb = FakeEmbeddings()
     run_ingestion(
         docs_dir=str(fixtures_dir),
         index_dir=str(index_dir),
-        mock=True,
+        embedder=fake_emb,
     )
 
     service = RAGService(
@@ -30,6 +34,8 @@ def populated_rag_service(tmp_path):
         similarity_threshold=0.20,
     )
     service.initialize()
+    if service.retriever:
+        service.retriever.embedder = fake_emb
     return service
 
 
@@ -133,15 +139,17 @@ def test_websocket_knowledge_query_and_chat_turn_events(monkeypatch, tmp_path):
     # Populate temporary index
     fixtures_dir = Path("tests/fixtures/sample_docs")
     index_dir = tmp_path / "ws_test_vectorstore"
+    fake_emb = FakeEmbeddings()
     run_ingestion(
         docs_dir=str(fixtures_dir),
         index_dir=str(index_dir),
-        mock=True,
+        embedder=fake_emb,
     )
     rag_service.index_dir = index_dir
-    rag_service.mock_models = True
     rag_service.similarity_threshold = 0.20
     rag_service.initialize()
+    if rag_service.retriever:
+        rag_service.retriever.embedder = fake_emb
 
     # Mock LLM streaming responses
     def mock_llm_stream_handler(request: httpx.Request):

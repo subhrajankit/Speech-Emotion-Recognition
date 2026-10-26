@@ -88,7 +88,7 @@ def test_real_model_inference():
 
     import os
     model_dir = os.getenv("SENSEVOICE_MODEL_DIR", "iic/SenseVoiceSmall")
-    if not os.path.exists(model_dir):
+    if not os.path.exists(model_dir) and not model_dir.startswith("iic/"):
         pytest.skip(f"SenseVoice weights absent at '{model_dir}'. Skipping real model test.")
 
     # Only reached if dependencies and weights actually exist

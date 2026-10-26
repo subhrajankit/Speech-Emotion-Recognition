@@ -10,6 +10,7 @@ import pytest
 from rag.chunking import DocumentChunker, compute_file_sha256
 from rag.ingestion import run_ingestion
 from rag.vectorstore import FAISSVectorStore, IndexConfigMismatchError
+from tests.test_doubles import FakeEmbeddings
 
 
 def test_compute_file_sha256(tmp_path):
@@ -48,12 +49,13 @@ def test_ingestion_cli_on_fixture_docs(tmp_path):
 
     index_dir = tmp_path / "test_vectorstore"
 
+    fake_emb = FakeEmbeddings(model_id="intfloat/multilingual-e5-small", dimension=384)
     total_chunks = run_ingestion(
         docs_dir=str(fixtures_dir),
         index_dir=str(index_dir),
         chunk_size=300,
         chunk_overlap=50,
-        mock=True,
+        embedder=fake_emb,
     )
 
     assert total_chunks > 0
@@ -88,10 +90,11 @@ def test_index_config_mismatch_rejection(tmp_path):
     index_dir = tmp_path / "test_mismatch_store"
 
     # Build index with standard config
+    fake_emb = FakeEmbeddings(model_id="intfloat/multilingual-e5-small", dimension=384)
     run_ingestion(
         docs_dir=str(fixtures_dir),
         index_dir=str(index_dir),
-        mock=True,
+        embedder=fake_emb,
     )
 
     # 1. Attempt to load with a different model name
@@ -122,6 +125,6 @@ def test_ingestion_empty_directory_returns_zero(tmp_path):
     empty_docs.mkdir()
 
     out_store = tmp_path / "empty_store"
-    count = run_ingestion(docs_dir=str(empty_docs), index_dir=str(out_store), mock=True)
+    count = run_ingestion(docs_dir=str(empty_docs), index_dir=str(out_store))
     assert count == 0
     assert not (out_store / "index.faiss").exists()

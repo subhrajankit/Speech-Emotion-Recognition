@@ -14,9 +14,12 @@ from ai.inference.sensevoice import SenseVoiceSpeechEngine
 from ai.inference.types import SpeechResult
 
 
+from unittest.mock import MagicMock
+
+
 def test_indicconformer_interface_compliance():
     """Confirms IndicConformerSpeechEngine satisfies SpeechEngine ABC."""
-    engine = IndicConformerSpeechEngine(auto_load=False, mock=True)
+    engine = IndicConformerSpeechEngine(auto_load=False)
     assert isinstance(engine, SpeechEngine)
     assert "IndicConformer-600m" in engine.model_version
 
@@ -28,7 +31,11 @@ def test_indicconformer_emotion_is_always_none():
     Must always return emotion = None and emotion_scores = None.
     SenseVoice emotion head is never run on Hindi audio.
     """
-    engine = IndicConformerSpeechEngine(auto_load=False, mock=True)
+    engine = IndicConformerSpeechEngine(auto_load=False)
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = ["परीक्षण"]
+    engine.model = mock_model
+    engine.is_loaded = True
     dummy_audio = np.ones(16000, dtype=np.float32)
 
     result = engine.transcribe(dummy_audio, sample_rate=16000, language_hint="hi")
@@ -74,7 +81,6 @@ def test_actionable_error_on_missing_nemo_or_weights():
     """
     engine = IndicConformerSpeechEngine(
         auto_load=False,
-        mock=False,
         model_dir="nonexistent/models/IndicConformer.nemo"
     )
     try:

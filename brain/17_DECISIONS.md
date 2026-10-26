@@ -32,6 +32,7 @@
   - Zero-lag audio capture on client side.
   - Unit and integration tests run deterministically in CI and local machines.
   - Production models can be swapped in transparently via HuggingFace or local weights.
+- **Phase 8b Reality Check Update**: All fallback chimes and mock synthesizer paths in runtime code were deleted. Test doubles are restricted strictly to `tests/test_doubles.py`.
 
 ## ADR 004: Silero VAD v5 ONNX Integration & 700ms Streaming Segmentation (Phase 2)
 - **Context**: Stopping unnecessary audio transmission to ASR when user is silent, enabling hands-free speech turn-taking.
@@ -44,6 +45,7 @@
   - Audio is never processed by ASR during silence or background pauses.
   - Natural, hands-free conversational turn detection without manual button toggling.
   - Minimal compute footprint (< 1ms per 32ms frame on CPU).
+- **Phase 8b Invalidation Note**: Phase 2 benchmark results citing 23 ms full-turn processing were measured using an artificial mock ASR test double. Real neural `SenseVoiceSmall` processing time is 766 ms – 988 ms. The 23 ms benchmark is INVALID.
 
 ## ADR 005: Dual-ASR Language Routing & Heuristic Hinglish Tagging (Phase 3)
 - **Context**: Accurate transcription across global languages and 22 scheduled Indian languages, with robust support for code-mixed speech (Hinglish).
@@ -71,6 +73,7 @@
 - **Consequences**:
   - Preserves low latency (< 670ms target) for conversational chat by eliminating unnecessary vector lookups.
   - Clear architectural boundaries for tool execution and document retrieval.
+- **Phase 8b Invalidation Note**: Phase 4 claims that IndicConformer-600m transcribed live Hindi without Hugging Face organization access were mock-derived (`mock=True`). IndicConformer is a gated repository (returns HTTP 403 Forbidden without authenticated approval). The router now gracefully falls back to SenseVoice when access is forbidden. Mock claims are INVALID.
 
 ## ADR 007: Empirical Valence/Arousal Coordinate Mapping & Lexicon-Based Sentiment Fusion (Phase 5)
 - **Context**: SenseVoice produces discrete acoustic emotion tags (`<|HAPPY|>`, `<|SAD|>`, etc.), but rich LLM conditioning and affective tracking require continuous dimensional representations (Valence and Arousal) without adding a heavy neural model.
@@ -444,6 +447,7 @@
   - High resilience on Windows environments regardless of C++ DLL loading restrictions.
   - Guaranteed fit within 2048-token context window without context truncation.
   - Verified import isolation: speech perception and emotion modules remain completely independent of RAG.
+- **Phase 8b Invalidation Note**: Phase 7 RAG metrics generated with `_deterministic_mock_embedding` are INVALID. Real `intfloat/multilingual-e5-small` embeddings + FAISS re-measured in Phase 8b achieved 1.000 precision and recall across 3 knowledge queries and 3 chat queries.
 
 ## ADR 029: Indic Parler-TTS Integration, Isolated Virtual Environment (.venv-tts), and 4GB VRAM Coexistence Strategy (Phase 8 Migration)
 - **Context**:
@@ -470,6 +474,18 @@
   - Complete protection of main environment dependencies.
   - Honest, robust error handling with zero silent mocks.
   - Clear empirical guidelines for deploying on constrained 4 GB laptops.
+
+## ADR 030: Phase 8b Reality Check — Purge of Runtime Mocks and Defaulting TTS_ENABLED=false on RTX 2050 Mobile
+- **Context**:
+  Phase 8 audit revealed that runtime fakes existed in `ai/inference/sensevoice.py`, `ai/inference/indicconformer.py`, `ai/preprocessing/vad.py`, and `rag/embeddings.py`, allowing tests and benchmarks to pass without executing real neural weights. Additionally, testing Indic Parler-TTS on an RTX 2050 Mobile (4 GB VRAM) demonstrated severe VRAM contention and RTF > 1.0.
+- **Decision**:
+  1. **Zero Runtime Fakes**: Deleted all mock parameters and mock branching from runtime code. Fakes may only exist in `tests/test_doubles.py` for unit tests. If model dependencies or weights are absent, runtime components fail loudly and report `"unavailable"` in `/api/health`.
+  2. **Empirical Grounding**: Measured real SenseVoiceSmall (~766 ms), real Qwen3-1.7B GGUF (~50 tok/s), real multilingual-e5-small embeddings with FAISS, and real TTS worker execution.
+  3. **Mandatory Configuration Invariant**: Configured `TTS_ENABLED=false` as the permanent default in `backend/app/core/config.py`. Detailed findings published in `docs/deployment/tts-benchmark-rtx2050.md`.
+- **Consequences**:
+  - Zero synthetic results or mock bypasses in production code.
+  - Predictable, stable voice loop operation on 4 GB target workstations.
+  - Full transparency: all previously reported mock benchmarks marked INVALID.
 
 
 

@@ -74,9 +74,7 @@ database/*.sqlite*
 database/*.faiss
 database/backups/*
 !database/backups/.gitkeep
-data/index/*.index
-data/index/*.faiss
-data/index/chunks.json
+data/index/*
 !data/index/.gitkeep
 rag/vectorstore/*
 !rag/vectorstore/.gitkeep

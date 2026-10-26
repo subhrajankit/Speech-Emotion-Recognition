@@ -114,14 +114,12 @@ class SenseVoiceSpeechEngine(SpeechEngine):
         threads: Optional[int] = None,
         vad_model_path: Optional[str] = None,
         vad_threshold: Optional[float] = None,
-        mock: bool = False,
         auto_load: bool = True,
     ):
         self.model_dir = model_dir or os.getenv("SENSEVOICE_MODEL_DIR", "iic/SenseVoiceSmall")
         self.device = device or os.getenv("SENSEVOICE_DEVICE", "cpu")
         self.threads = threads or int(os.getenv("SENSEVOICE_THREADS", "4"))
-        self.mock = mock or (os.getenv("MOCK_MODELS", "false").lower() in ("true", "1"))
-        self._model_version = f"SenseVoiceSmall ({'mock' if self.mock else Path(self.model_dir).name})"
+        self._model_version = f"SenseVoiceSmall ({Path(self.model_dir).name})"
 
         self.vad = SileroVAD(
             model_path=vad_model_path,
@@ -130,7 +128,7 @@ class SenseVoiceSpeechEngine(SpeechEngine):
         self.model = None
         self.is_loaded = False
 
-        if auto_load and not self.mock:
+        if auto_load:
             self._load_model()
 
     @property
@@ -221,19 +219,6 @@ class SenseVoiceSpeechEngine(SpeechEngine):
             )
 
         # 3. Model inference
-        if self.mock:
-            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            return SpeechResult(
-                transcript="Hello, this is a test from the voice assistant.",
-                language=language_hint if language_hint in ("zh", "en", "yue", "ja", "ko") else "en",
-                emotion="neutral",
-                confidence=None,
-                processing_time_ms=elapsed_ms,
-                model_version=self.model_version,
-                audio_events=["Speech"],
-                debug={"status": "mock_inference", "vad_has_speech": True}
-            )
-
         if not self.is_loaded or self.model is None:
             self._load_model()
 
@@ -290,6 +275,10 @@ class SenseVoiceSpeechEngine(SpeechEngine):
 
 def main():
     """CLI entrypoint for standalone SenseVoice speech perception."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(
         description="SenseVoice Base Speech Perception CLI"
     )
@@ -303,12 +292,6 @@ def main():
         "--test-silence",
         action="store_true",
         help="Run inference on 1.0s of synthetic silence"
-    )
-    parser.add_argument(
-        "--mock",
-        action="store_true",
-        default=os.getenv("MOCK_MODELS", "false").lower() in ("true", "1"),
-        help="Run in mock mode when model weights or dependencies are absent"
     )
     parser.add_argument(
         "--model-dir",
@@ -343,7 +326,6 @@ def main():
             model_dir=args.model_dir,
             device=args.device,
             threads=args.threads,
-            mock=args.mock,
         )
         result = engine.transcribe(audio, sample_rate=16000)
         print(result.model_dump_json(indent=2))

@@ -55,9 +55,17 @@ class RAGService:
         Safe initialization: does not crash if vector store is not yet built.
         """
         logger.info("Initializing RAGService...")
-        self.embedder = MultilingualE5Embeddings(
-            model_id=self.model_id,
-        )
+        self._init_error: Optional[str] = None
+        try:
+            self.embedder = MultilingualE5Embeddings(
+                model_id=self.model_id,
+            )
+        except Exception as e:
+            logger.error(f"RAGService failed to initialize embedder: {e}")
+            self.embedder = None
+            self._init_error = str(e)
+            self.is_initialized = False
+            return
 
         self.vectorstore = FAISSVectorStore(
             dimension=EMBEDDING_DIMENSION,

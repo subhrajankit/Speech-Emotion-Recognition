@@ -2,6 +2,22 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 8b - Reality Check] - Elimination of Runtime Fakes & Empirical Baseline Grounding (2026-10-26)
+- **Zero Runtime Fakes Invariant**:
+  - Completely purged all mock code paths, `mock=True` parameter lookups, and deterministic fallback hashes from `ai/inference/sensevoice.py`, `ai/inference/indicconformer.py`, `ai/preprocessing/vad.py`, and `rag/embeddings.py`.
+  - Fakes and stubs strictly restricted to `tests/test_doubles.py` for isolated unit tests.
+- **Environment Integrity Verification**:
+  - Verified `.venv` (Python 3.13.14, PyTorch 2.14.1+cu126, funasr 1.4.16, sentence-transformers 6.2.0, faiss-cpu 1.15.1, nemo_toolkit 3.0.0, onnxruntime 1.31.0).
+  - Maintained decoupled `.venv-tts` (Python 3.13.14, PyTorch 2.14.1+cu126, transformers 4.46.1, parler-tts 0.2.2).
+- **Real Empirical ASR & Intent Verification**:
+  - Real `SenseVoiceSmall` transcription measured on live audio: 766 ms – 988 ms on CPU/GPU.
+  - IndicConformer identified as restricted/gated on Hugging Face (403 Forbidden without authenticated organization token); router gracefully falls back to SenseVoice without crashing.
+  - Real multilingual-e5-small embeddings + FAISS retrieval: 100% precision & recall across 3 knowledge and 3 casual chat queries; all prior mock embedding metrics marked INVALID.
+- **Full Voice Turn Verification & Default Configuration**:
+  - Live turn over `/ws/speech` (TTS_ENABLED=false): real SenseVoice -> real local Qwen3-1.7B streaming -> completion.
+  - Live turn with TTS_ENABLED=true: successfully validated real failure isolation and graceful error emission when 3.75GB TTS weights exceed VRAM limits.
+  - Authored `docs/deployment/tts-benchmark-rtx2050.md` confirming `TTS_ENABLED=false` as the permanent default on 4GB VRAM mobile GPUs.
+
 ## [Phase 8 - Target Migration] - Indic Parler-TTS Integration, Sentence Streaming & Failure Isolation (2026-10-26)
 - **Isolated Virtual Environment (`.venv-tts`)**:
   - Saved `pip freeze` backup to `scripts/backups/env-before-tts.txt` (UTF-8).
@@ -40,6 +56,9 @@ All notable changes across build phases are recorded here.
   - AST automated isolation test confirms zero imports of `tts_service` or `tts` from `ai/` or `speech_service.py`.
 
 ## [Phase 7 - Target Migration] - Intent-Gated RAG & Knowledge Retrieval (2026-10-26)
+> [!WARNING]
+> **INVALIDATION NOTE (Phase 8b Reality Check - 2026-10-26)**:
+> In Phase 7, retrieval precision and recall metrics were generated using `_deterministic_mock_embedding` (a token-hash fallback in `rag/embeddings.py`) because `sentence-transformers` was uninstalled in the backend environment. Phase 8b deleted this mock fallback and installed real `sentence-transformers` (6.2.0) and `faiss-cpu` (1.15.1). Real re-measured benchmarks with `intfloat/multilingual-e5-small`: 3 knowledge queries achieved 1.000 precision/recall; 3 casual chat queries achieved 1.000 negative gate accuracy. All Phase 7 mock-derived RAG numbers are INVALID.
 - **Intent Router Hard Gate (`rag/intent_router.py`)**:
   - Implemented 2-tier hybrid intent classifier: Tier 1 regex rules for English, Hindi (Devanagari), and Hinglish (Latin); Tier 2 exemplar cosine similarity using multilingual-e5-small query embeddings; Tier 3 unconditional fallback to `chat`.
   - Schema: `{intent: "chat" | "knowledge_query", score: float, method: str}`.
@@ -101,6 +120,9 @@ All notable changes across build phases are recorded here.
   - `tests/ai/test_emotion_inference.py`: 5 tests validating engine interface compliance, probability calibration ($\sum p_i = 1.0$), audio formats, and AST import isolation.
   - 61 passed, 2 skipped across `tests/ai/`. All Phase 1 tests pass.
 ## [Phase 6 - Target Migration] - Qwen3 / LLM Service & WebSocket Streaming (2026-10-25)
+> [!WARNING]
+> **INVALIDATION NOTE (Phase 8b Reality Check - 2026-10-26)**:
+> Phase 6 full-turn WebSocket benchmarks previously included simulated ASR latency with mock flags. Real end-to-end turns measured in Phase 8b over `/ws/speech` with local `llama-server` (Qwen3-1.7B Q4_K_M) and real neural `SenseVoiceSmall` confirmed true ASR processing time of 766 ms, followed by immediate token streaming from the local LLM (~45–60 tok/s). All earlier mock-injected full-turn times are INVALID.
 - **Decoupled LLM Service Interface (`backend/app/services/llm_service.py`)**:
   - Implemented `LLMService` communicating with local `llama-server` over HTTP using `httpx` with explicit timeouts.
   - Implemented `generate(messages, *, emotion=None, language=None, stream=True, max_tokens=None, timeout=None)` supporting async token streaming and non-streaming modes.
@@ -133,6 +155,9 @@ All notable changes across build phases are recorded here.
   - 40 backend tests and 61 AI tests passing (101 passed, 2 deselected). All tests pass.
 
 ## [Phase 4 - Target Migration] - Hindi / Indic Language Routing & Unified SpeechEngine (2026-09-20)
+> [!WARNING]
+> **INVALIDATION NOTE (Phase 8b Reality Check - 2026-10-26)**:
+> In Phase 4, `IndicConformerSpeechEngine` relied on mock mode execution paths (`mock=True`). In Phase 8b, all mock flags were deleted from runtime code. Real weight loading attempts for `ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large` reveal that the repository is gated on Hugging Face (requiring specific organization access approval; returns HTTP 403 Forbidden). Any Phase 4 claims that IndicConformer ran live without approved credentials were mock-derived and are INVALID.
 - **Standardized Language Router (`ai/routing/language_router.py`)**:
   - Implemented `RoutingDecision` schema: `{language, confidence, engine, source: "hint" | "detected" | "default"}`.
   - Implemented 3-tier precedence policy: explicit client `language_hint` wins (Tier 1); spoken LID above configurable threshold `LID_CONFIDENCE_THRESHOLD=0.6` (Tier 2); default engine `SenseVoiceSmall` (Tier 3).
@@ -189,6 +214,9 @@ All notable changes across build phases are recorded here.
   - `npm run lint` (`eslint`), `npx tsc --noEmit`, and `npm run build` pass with zero warnings and zero errors.
 
 ## [Phase 2 - Target Migration] - Clean FastAPI Boundaries & Real-Time WebSocket (2026-09-20)
+> [!WARNING]
+> **INVALIDATION NOTE (Phase 8b Reality Check - 2026-10-26)**:
+> In Phase 2 benchmarks, WebSocket processing times reported as 23 ms were produced by an artificial test double / mock ASR path (`mock=True` returning static `"Hello world"`). Real neural ASR inference on `SenseVoiceSmall` was measured in Phase 8b as **766 ms – 988 ms** (`processing_time_ms: 766`). The 23 ms benchmark is INVALID and retracted.
 - **Modular Backend Architecture (`backend/app/`)**:
   - Application factory in `backend/app/main.py` with FastAPI lifespan model loading.
   - Configuration via `pydantic-settings` in `backend/app/core/config.py` with CORS origins from environment and strict privacy logging.

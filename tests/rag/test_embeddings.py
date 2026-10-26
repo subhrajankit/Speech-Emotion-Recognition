@@ -10,7 +10,7 @@ from rag.embeddings import MultilingualE5Embeddings, EMBEDDING_DIMENSION
 
 
 def test_embedding_dimensions_and_types():
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     assert embedder.dimension == EMBEDDING_DIMENSION
     assert embedder.dimension == 384
 
@@ -31,7 +31,7 @@ def test_embedding_dimensions_and_types():
 
 def test_vector_l2_normalization():
     """Inner product on L2-normalized vectors mathematically equals cosine similarity."""
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
 
     vec = embedder.embed_query("Server maintenance schedule")
     norm = np.linalg.norm(vec)
@@ -44,7 +44,7 @@ def test_vector_l2_normalization():
 
 
 def test_empty_passages_handling():
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     empty_vecs = embedder.embed_passages([])
     assert empty_vecs.shape == (0, 384)
 
@@ -57,14 +57,20 @@ def test_prefix_convention_preservation(monkeypatch):
     Verifies that 'query: ' and 'passage: ' prefixes are strictly applied
     as required by intfloat/multilingual-e5-small model card.
     """
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     recorded_texts = []
 
-    def fake_mock_embedding(text: str) -> np.ndarray:
-        recorded_texts.append(text)
-        return np.ones(384, dtype=np.float32) / np.sqrt(384)
+    def fake_encode(texts, **kwargs):
+        if isinstance(texts, str):
+            recorded_texts.append(texts)
+            return np.ones(384, dtype=np.float32) / np.sqrt(384)
+        else:
+            recorded_texts.extend(texts)
+            arr = np.ones((len(texts), 384), dtype=np.float32)
+            norms = np.linalg.norm(arr, axis=1, keepdims=True)
+            return arr / norms
 
-    monkeypatch.setattr(embedder, "_deterministic_mock_embedding", fake_mock_embedding)
+    monkeypatch.setattr(embedder.model, "encode", fake_encode)
 
     embedder.embed_query("check vacation policy")
     assert len(recorded_texts) == 1

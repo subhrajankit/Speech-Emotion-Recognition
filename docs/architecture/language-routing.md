@@ -77,7 +77,8 @@ The decision logic in `ai/routing/language_router.py` enforces a deterministic 3
 
 ### B. AI4Bharat IndicConformer-600m
 - **Citation**: AI4Bharat IndicSUPERB / IndicConformer: Kumar et al. (2022/2023); *"Towards Building Open-Domain Speech Systems for 22 Indian Languages"*, Interspeech 2022.
-- **Hugging Face Model**: `ai4bharat/indicconformer_stt_indic_hybrid_ctc_large` / `ai4bharat/indicconformer_stt_hi_hybrid_ctc_large`.
+- **Hugging Face Model**: `ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large` / `ai4bharat/indicconformer_stt_indic_hybrid_ctc_large`.
+- **Phase 8b Invalidation & Gated Status [VERIFIED]**: The Hugging Face checkpoint `ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large` is a gated repository. Live access without approved organization permissions returns HTTP `403 Forbidden`. Any Phase 4 benchmark figures alleging live execution without authenticated credentials were mock-derived and are INVALID. When weights are gated or unavailable, the language router gracefully falls back to SenseVoice without crashing.
 - **Loading Mechanism**: Built using NVIDIA NeMo toolkit (`nemo.collections.asr.models.EncDecCTCModelBPE`). Restored via `EncDecCTCModelBPE.from_pretrained(...)` or `.restore_from(...)`.
 - **Decoding Modes**:
   - `ctc` (Connectionist Temporal Classification): Non-autoregressive, fast streaming, lower CPU latency.

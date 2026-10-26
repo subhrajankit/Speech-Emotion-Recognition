@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("ws_client")
 
 
-async def receive_events(ws, stop_event: asyncio.Event):
+async def receive_events(ws, stop_event: asyncio.Event, wait_for_tts: bool = False):
     """Continuously listens for and prints server events."""
     try:
         async for message in ws:
@@ -28,18 +28,23 @@ async def receive_events(ws, stop_event: asyncio.Event):
                     event_type = event.get("type", "unknown")
                     print(f"\n[SERVER EVENT: {event_type.upper()}]")
                     print(json.dumps(event, indent=2))
-                    if event_type == "speech_result":
-                        stop_event.set()
+                    if wait_for_tts:
+                        if event_type in ("tts_done", "error"):
+                            stop_event.set()
+                    else:
+                        if event_type in ("llm_done", "tts_done", "error"):
+                            stop_event.set()
                 except json.JSONDecodeError:
                     print(f"\n[SERVER TEXT] {message}")
             else:
-                print(f"\n[SERVER BINARY] Received {len(message)} bytes")
+                print(f"\n[SERVER BINARY AUDIO] Received {len(message)} bytes WAV frame")
     except websockets.exceptions.ConnectionClosed:
         logger.info("WebSocket connection closed by server.")
     except Exception as e:
         logger.error(f"Error receiving message: {e}")
     finally:
         stop_event.set()
+
 
 
 async def stream_wav(
@@ -49,7 +54,8 @@ async def stream_wav(
     chunk_delay: float = 0.032,
     language_hint: str = None,
     token: str = None,
-    timeout: float = 15.0
+    timeout: float = 15.0,
+    wait_for_tts: bool = False,
 ):
     """
     Connects to WebSocket, sends start message, streams audio chunks, and prints responses.
@@ -85,7 +91,7 @@ async def stream_wav(
     logger.info(f"Connecting to {target_url}...")
     async with websockets.connect(target_url) as ws:
         stop_event = asyncio.Event()
-        recv_task = asyncio.create_task(receive_events(ws, stop_event))
+        recv_task = asyncio.create_task(receive_events(ws, stop_event, wait_for_tts=wait_for_tts))
 
         # 1. Send start frame
         start_msg = {
@@ -145,7 +151,8 @@ def main():
     parser.add_argument("--chunk-delay", type=float, default=0.032, help="Delay between chunks in seconds (default: 0.032)")
     parser.add_argument("--language-hint", default=None, help="Optional ISO language code")
     parser.add_argument("--token", default=None, help="Optional JWT token")
-    parser.add_argument("--timeout", type=float, default=15.0, help="Response timeout in seconds")
+    parser.add_argument("--timeout", type=float, default=30.0, help="Response timeout in seconds")
+    parser.add_argument("--wait-for-tts", action="store_true", help="Wait for tts_done event instead of llm_done")
 
     args = parser.parse_args()
 
@@ -156,7 +163,8 @@ def main():
         chunk_delay=args.chunk_delay,
         language_hint=args.language_hint,
         token=args.token,
-        timeout=args.timeout
+        timeout=args.timeout,
+        wait_for_tts=args.wait_for_tts,
     ))
 
 

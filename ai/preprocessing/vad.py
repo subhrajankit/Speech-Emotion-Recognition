@@ -34,13 +34,11 @@ class SileroVAD:
         threshold: Optional[float] = None,
         min_speech_duration_ms: int = 250,
         min_silence_duration_ms: int = 700,
-        mock: bool = False
     ):
         self.model_path = model_path or os.getenv("SILERO_VAD_MODEL_PATH", "models/silero_vad.onnx")
         self.threshold = threshold if threshold is not None else float(os.getenv("SILERO_VAD_THRESHOLD", "0.5"))
         self.min_speech_duration_ms = min_speech_duration_ms
         self.min_silence_duration_ms = min_silence_duration_ms
-        self.mock = mock
 
         self.session = None
         self.context_size = 64
@@ -51,15 +49,11 @@ class SileroVAD:
         self._load_model()
 
     def _load_model(self):
-        if self.mock:
-            logger.info("SileroVAD initialized in MOCK mode.")
-            self.is_loaded = True
-            return
-
         if not os.path.exists(self.model_path):
-            logger.warning(f"Silero VAD model not found at {self.model_path}. Falling back to energy-based VAD.")
-            self.is_loaded = False
-            return
+            raise FileNotFoundError(
+                f"Silero VAD ONNX model not found at '{self.model_path}'. "
+                "Ensure models/silero_vad.onnx is present."
+            )
 
         try:
             import onnxruntime as ort
@@ -86,8 +80,8 @@ class SileroVAD:
         if len(frame_samples) != 512:
             raise ValueError(f"Silero VAD requires exactly 512 samples per frame, received {len(frame_samples)}")
 
-        # Energy-based speech approximation for mock or fallback
-        if self.session is None or self.mock:
+        # Energy-based speech approximation only if session failed to load
+        if self.session is None:
             rms = float(np.sqrt(np.mean(np.square(frame_samples))))
             return 1.0 if rms > 0.015 else 0.0
 

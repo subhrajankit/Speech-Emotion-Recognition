@@ -102,7 +102,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      "language": "en",
      "emotion": "happy",
      "confidence": null,
-     "processing_time_ms": 78,
+     "processing_time_ms": 766,
      "model_version": "SenseVoiceSmall (funasr)",
      "audio_events": ["Speech"],
      "segments": [],
@@ -112,6 +112,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      }
    }
    ```
+   *(Note: Real SenseVoiceSmall neural processing time measured in Phase 8b is ~760 ms – 990 ms on CPU/GPU. Previous benchmark figures citing 23 ms were produced by test mock injection and are INVALID.)*
 
 5. **RAG Citations (`rag_sources`)**:
    Emitted when a knowledge query retrieves grounded document chunks from the local vector index:

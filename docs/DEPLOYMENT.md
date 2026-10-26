@@ -20,14 +20,21 @@ Best for active code editing, testing, and debugging.
 ./llama-server -m ./models/qwen3-1.7b.gguf --host 127.0.0.1 --port 8080 -ngl 33 -c 4096
 ```
 
+### Environment Architecture (Phase 8b Reality Check)
+The local backend operates with dual virtual environments to eliminate dependency conflicts:
+1. **`.venv` (Main Backend, ASR & RAG)**: Houses FastAPI, Silero VAD, SenseVoiceSmall, IndicConformer, `sentence-transformers` (multilingual-e5-small), and `faiss-cpu`.
+2. **`.venv-tts` (Isolated TTS Worker)**: Houses `parler-tts` (`transformers<=4.46.1`) executed as an isolated subprocess worker via `backend/app/services/tts_worker.py`.
+
+*Hardware Note*: On 4 GB VRAM GPUs (e.g. RTX 2050 Mobile), `TTS_ENABLED=false` is configured as the default to prevent VRAM paging and memory contention with `llama-server`. See `docs/deployment/tts-benchmark-rtx2050.md`.
+
 ### Step 2: Start FastAPI Backend
 ```bash
 # Activate virtual environment
 source .venv/bin/activate  # Linux
 # .\.venv\Scripts\Activate.ps1  # Windows
 
-# Launch with hot-reload
-uvicorn src.backend.main:app --host 127.0.0.1 --port 8000 --reload
+# Launch target modular backend
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### Step 3: Start React Frontend

@@ -15,7 +15,7 @@ def evaluate_gate():
     Evaluates the Intent Router over the full labelled evaluation set.
     Returns precision, recall, f1, and detailed results.
     """
-    embedder = MultilingualE5Embeddings(mock=True)
+    embedder = MultilingualE5Embeddings()
     router = IntentRouter(embedder=embedder, similarity_threshold=0.75)
 
     # Positive class = 'knowledge_query', Negative class = 'chat'

@@ -54,7 +54,6 @@ class IndicConformerSpeechEngine(SpeechEngine):
         decoder_type: str = "ctc",
         vad_model_path: Optional[str] = None,
         vad_threshold: Optional[float] = None,
-        mock: bool = False,
         auto_load: bool = True,
         emotion_hook: Optional[Callable[[np.ndarray, SpeechResult], SpeechResult]] = None,
     ):
@@ -67,18 +66,16 @@ class IndicConformerSpeechEngine(SpeechEngine):
             decoder_type: Decoding mode ('ctc' or 'rnnt').
             vad_model_path: Optional path to Silero VAD ONNX model.
             vad_threshold: Speech detection probability threshold.
-            mock: If True, uses mock inference for testing without weights.
-            auto_load: If True and mock is False, loads model immediately.
+            auto_load: If True, loads model immediately.
             emotion_hook: Optional hook for Phase 5 SER to attach emotion to result.
         """
         self.model_dir = model_dir or os.getenv(
             "INDICCONFORMER_MODEL_DIR",
-            "ai4bharat/indicconformer_stt_indic_hybrid_ctc_large"
+            "ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large"
         )
         self.device = device or os.getenv("INDICCONFORMER_DEVICE", "cpu")
         self.decoder_type = decoder_type or os.getenv("INDICCONFORMER_DECODER_TYPE", "ctc")
-        self.mock = mock or (os.getenv("MOCK_MODELS", "false").lower() in ("true", "1"))
-        self._model_version = f"IndicConformer-600m ({'mock' if self.mock else Path(self.model_dir).name})"
+        self._model_version = f"IndicConformer-600m ({Path(self.model_dir).name})"
 
         self.vad = SileroVAD(
             model_path=vad_model_path,
@@ -88,7 +85,7 @@ class IndicConformerSpeechEngine(SpeechEngine):
         self.is_loaded = False
         self.emotion_hook = emotion_hook
 
-        if auto_load and not self.mock:
+        if auto_load:
             self._load_model()
 
     @property
@@ -195,24 +192,6 @@ class IndicConformerSpeechEngine(SpeechEngine):
             )
 
         # 3. Model inference
-        if self.mock:
-            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            result = SpeechResult(
-                transcript="नमस्ते, यह वॉइस असिस्टेंट से एक परीक्षण है।",
-                language=target_lang,
-                emotion=None,  # IndicConformer produces no emotion
-                confidence=None,
-                processing_time_ms=elapsed_ms,
-                model_version=self.model_version,
-                audio_events=["Speech"],
-                debug={
-                    "status": "mock_inference",
-                    "vad_has_speech": True,
-                    "decoder_type": self.decoder_type
-                }
-            )
-            return self._apply_emotion_hook(audio, result)
-
         if not self.is_loaded or self.model is None:
             self._load_model()
 

@@ -82,7 +82,7 @@ def evaluate_sensevoice_baseline(
 
     try:
         from ai.inference.sensevoice import SenseVoiceSpeechEngine
-        engine = SenseVoiceSpeechEngine(mock=True, auto_load=True)
+        engine = SenseVoiceSpeechEngine(auto_load=True)
     except Exception as e:
         logger.warning(f"Could not initialize SenseVoiceSpeechEngine for baseline: {e}")
         return {
