@@ -76,21 +76,25 @@ Because Parler-TTS uses a multi-codebook architecture (typically 9 codebooks at 
 3. Total footprint: $1,520 + 1,850 + 300 = 3,670\text{ MiB}$ base.
 4. When active synthesis begins, peak memory demand approaches physical capacity. Under Windows WDDM 3.x, approaching capacity triggers paging of CUDA memory segments to system RAM.
 
-### C. Diagnostic Bisect: Exit Code 3221225477 (0xC0000005 Access Violation)
-To test exit code `3221225477` (-1073741819 / `0xC0000005 STATUS_ACCESS_VIOLATION`), direct invocations of `scripts/measure_clamped_tts.py` and `backend/app/services/tts_worker.py` were executed:
+### C. Diagnostic Bisect & Phase 8f Clean Experiment (Backend Memory Hypothesis)
+To investigate the earlier exit code `3221225477` (`-1073741819` / `0xC0000005 STATUS_ACCESS_VIOLATION`), a bounded clean experiment was conducted in Phase 8f with the FastAPI backend stopped (`llama-server` retained):
 
-1. **Standalone Execution Today**: Both `measure_clamped_tts.py` and manual `tts_worker.py` execution fail on Windows with exit code `-1073741819` (`0xC0000005`).
-2. **Captured Stderr**:
-   ```text
-   FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
-   Flash attention 2 is not installed
-   ```
-   No Python traceback is emitted before the process is terminated by Windows.
-3. **System Telemetry at Time of Crash**:
-   - Free Physical RAM: 4,351 MB (~4.15 GB) out of 16,474 MB total
-   - Page File / Commit Charge: 30,391 MB committed out of 37,865 MB virtual limit (7,473 MB virtual free)
-   - Free Disk: C: 21.32 GB, D: 107.05 GB
-4. **Status**: Documented as a known issue on this Windows environment. No further TTS debugging per instruction.
+1. **System Telemetry With Backend Active (Earlier Crash)**:
+   - Free Physical RAM: 4,351 MB (~4.15 GB) out of 16,474 MB total.
+   - Page File / Commit Charge: **30,391 MB** committed out of 37,865 MB limit (80.3% saturated).
+   - In this state, invocations of `scripts/measure_clamped_tts.py` crashed immediately with Windows access violation `0xC0000005`.
+
+2. **Phase 8f Clean Experiment Telemetry (Backend Stopped)**:
+   - Free Physical RAM before run: 6,432.4 MB; Commit Charge: **21,329.1 MB** (56.3%).
+   - Free Physical RAM after run: 5,741.0 MB; Commit Charge: 21,570.6 MB (57.0%).
+   - **Result**: Under this lower commit charge, `scripts/measure_clamped_tts.py` **did not trigger an access violation**. It executed all float16, bfloat16, streaming chunk, and CPU synthesis passes successfully. (The script terminated with Python exit code 1 only during DAC tensor shape profiling at line 224).
+
+3. **Hypothesis**:
+   - The earlier access violation `0xC0000005` coincided with high memory/commit charge saturation caused by the active FastAPI backend holding model weights in host memory alongside the desktop environment.
+   - *Working Hypothesis*: Windows paging/WDDM memory segment faults under >80% commit charge precipitated the process termination. This remains a **hypothesis** until low-level memory dump tracing is performed.
+
+4. **Operational Directive**:
+   > **Note on Memory**: Stop the dev server before running model tests (memory). On single-GPU systems with 16 GB host RAM, running concurrent heavy PyTorch model pipelines risks system memory thrashing and allocator failures.
 
 ---
 

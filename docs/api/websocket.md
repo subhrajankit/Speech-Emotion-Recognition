@@ -117,7 +117,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      }
    }
    ```
-    *(RETRACTED: Phase 8c benchmark figures citing confidence 0.85, 28 ms, or 78 ms are RETRACTED. Those numbers were produced by test mock injection / simulated test doubles and do not reflect neural inference. Real neural processing measured on live server in Phase 8e is 407 ms - 1658 ms on host CPU, and confidence is strictly null per Phase 1 specification.)*
+    *(RETRACTED: Phase 8c benchmark figures citing confidence 0.85, 28 ms, or 78 ms are RETRACTED. Their exact origin is not conclusively identified; candidates are the legacy router constant in src/backend/asr/router.py (sv_confidence = 0.85), test doubles in tests/test_doubles.py (FakeSenseVoiceEngine simulated_processing_ms = 28.0), or a client run that may have hit a stale server process. Real neural processing measured on live server in Phase 8e is 407 ms - 1658 ms on host CPU, and confidence is strictly null per Phase 1 specification.)*
    *(Audio Sample Disclosure: `tests/samples/english_speech_16k.wav` is synthetic audio generated via TTS synthesis, not human speech. It is used strictly for stream protocol regression testing, never as evidence of human ASR accuracy.)*
 
    **Multi-segment VAD Segmentation & Streaming Semantics**:

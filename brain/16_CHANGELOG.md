@@ -43,7 +43,7 @@ All notable changes across build phases are recorded here.
 - **WebSocket Result Fields Verification**:
   - Live server WebSocket run verified: `confidence` is strictly `None` (`null` in JSON) per Phase 1 specification.
   - Standardized `model_version` to `"SenseVoiceSmall (funasr)"` consistent with CLI.
-  - Explicitly marked Phase 8c WebSocket figures (confidence 0.85, 28 ms, 78 ms) as RETRACTED: those numbers were artifacts of simulated test double mock injection. Real neural inference measured in live server WebSocket run is 407 ms - 1658 ms on host CPU, and confidence is null per Phase 1 specification.
+  - Explicitly marked Phase 8c WebSocket figures (confidence 0.85, 28 ms, 78 ms) as RETRACTED: origin not conclusively identified; candidates are legacy router constants (src/backend/asr/router.py sv_confidence = 0.85), test doubles (FakeSenseVoiceEngine simulated_processing_ms = 28.0), or a run against a stale server process. Real neural inference measured in live server WebSocket run is 407 ms - 1658 ms on host CPU, and confidence is null per Phase 1 specification.
 - **SenseVoice Model Card Exact Citation**:
   - Fetched and cited official ModelScope and FunASR GitHub README (`https://modelscope.cn/models/iic/SenseVoiceSmall`).
   - Quoted exact statement (line 68): `"模型可以被应用于中文、粤语、英语、日语、韩语音频识别，并输出带有情感和事件的富文本转写结果。"`

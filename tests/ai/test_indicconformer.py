@@ -24,6 +24,17 @@ def test_indicconformer_interface_compliance():
     assert "IndicConformer-600m" in engine.model_version
 
 
+def test_indicconformer_lazy_load_behavior():
+    """
+    Confirms IndicConformer conforms to Phase 4 lazy loading requirement:
+    when auto_load=False (default under LAZY_LOAD_MODELS=True),
+    model weights and runtime memory are NOT allocated at initialization.
+    """
+    engine = IndicConformerSpeechEngine(auto_load=False)
+    assert engine.is_loaded is False
+    assert engine.model is None
+
+
 def test_indicconformer_emotion_is_always_none():
     """
     Critical Architecture Invariant:
@@ -139,16 +150,20 @@ def test_dual_engine_identical_schema():
         del indic_engine
         import gc
         gc.collect()
-    except Exception as e:
-        pytest.skip(f"IndicConformer could not be loaded or executed: {e}")
+    except (FileNotFoundError, OSError) as e:
+        if "not found" in str(e).lower() or "no such file" in str(e).lower():
+            pytest.skip(f"IndicConformer weights absent: {e}")
+        raise
 
     # 2. SenseVoice real transcription
     try:
         sv_engine = SenseVoiceSpeechEngine(model_dir=sv_model_dir, device="cpu", auto_load=True)
         english_audio = load_and_preprocess_audio(english_wav)
         sv_res = sv_engine.transcribe(english_audio, language_hint="en")
-    except Exception as e:
-        pytest.skip(f"SenseVoice could not be loaded or executed: {e}")
+    except (FileNotFoundError, OSError) as e:
+        if "not found" in str(e).lower() or "no such file" in str(e).lower():
+            pytest.skip(f"SenseVoice weights absent: {e}")
+        raise
 
     # 3. Assert identical schema and expected properties
     assert isinstance(indic_res, SpeechResult)

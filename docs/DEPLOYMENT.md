@@ -37,6 +37,8 @@ source .venv/bin/activate  # Linux
 uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+> **Note on Memory**: Stop the dev server before running model tests (memory). Heavy PyTorch test suites (like IndicConformer or SenseVoice) run alongside an active backend holding model weights can saturate commit charge and exhaust host memory.
+
 ### Step 3: Start React Frontend
 ```bash
 cd src/frontend
