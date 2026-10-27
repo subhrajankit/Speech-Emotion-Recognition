@@ -41,3 +41,11 @@ class SpeechEngine(ABC):
             SpeechResult conforming to the unified schema.
         """
         pass
+
+    def load(self) -> None:
+        """
+        Explicitly loads model weights into memory if not already loaded.
+        Safe to call multiple times (idempotent).
+        """
+        pass
+

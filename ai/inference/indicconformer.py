@@ -98,6 +98,11 @@ class IndicConformerSpeechEngine(SpeechEngine):
     def model_version(self) -> str:
         return self._model_version
 
+    def load(self) -> None:
+        """Idempotently loads IndicConformer-600m weights into memory."""
+        if not self.is_loaded or self.model is None:
+            self._load_model()
+
     def _load_model(self):
         """
         Loads the IndicConformer-600m model using transformers AutoModel per official model card:

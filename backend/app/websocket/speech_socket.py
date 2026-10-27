@@ -250,6 +250,13 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                 pass
             active_llm_task = None
 
+    async def send_engine_status(state: str, engine: str):
+        await safe_send_json(websocket, {
+            "type": "status",
+            "state": state,
+            "engine": engine,
+        })
+
     vad = SileroVAD(threshold=settings.VAD_THRESHOLD)
     segmenter = VADSpeechSegmenter(
         vad=vad,
@@ -325,7 +332,8 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             speech_res = await speech_service.transcribe_pcm16_bytes(
                                 pcm_bytes=flushed_audio,
                                 sample_rate=sample_rate,
-                                language_hint=language_hint
+                                language_hint=language_hint,
+                                status_callback=send_engine_status,
                             )
                             speech_payload = speech_res.model_dump()
                             speech_payload["debug"] = speech_payload.get("debug") or {}
@@ -422,7 +430,8 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         speech_res = await speech_service.transcribe_pcm16_bytes(
                             pcm_bytes=completed_utterance,
                             sample_rate=sample_rate,
-                            language_hint=language_hint
+                            language_hint=language_hint,
+                            status_callback=send_engine_status,
                         )
                         speech_payload = speech_res.model_dump()
                         speech_payload["debug"] = speech_payload.get("debug") or {}

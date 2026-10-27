@@ -38,6 +38,16 @@ def test_prompt_builder_emotion_and_language_conditioning():
     assert "calm or neutral" in neutral_prompt
 
 
+def test_prompt_builder_null_and_unknown_emotion_omits_tone_statement():
+    for emo in [None, "", "none", "unknown", "EMO_UNKNOWN", "null"]:
+        prompt = PromptBuilder.build_system_prompt(emotion=emo, language="hi")
+        assert "tone is" not in prompt
+        assert "calm or neutral" not in prompt
+        assert "Emotion Awareness" not in prompt
+        assert "Hindi" in prompt
+        assert "1 to 2 clear sentences" in prompt
+
+
 def test_prompt_builder_conversation_history_token_budget():
     history = [
         {"role": "user", "content": "Turn 1: Very old context from earlier in the day."},

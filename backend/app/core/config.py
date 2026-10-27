@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     INDICCONFORMER_DECODER_TYPE: str = "ctc"
     LID_CONFIDENCE_THRESHOLD: float = 0.6
     LAZY_LOAD_MODELS: bool = True
+    PRELOAD_DEFAULT_ENGINE: bool = False
 
     # LLM Settings (Qwen3 via local llama.cpp)
     LLM_BASE_URL: str = "http://127.0.0.1:8080"

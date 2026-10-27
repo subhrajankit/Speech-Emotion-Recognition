@@ -93,7 +93,29 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-4. **Speech Perception Result (`speech_result`)**:
+4. **Lazy Engine Load Status (`status`)**:
+   When an engine loads lazily on its first turn, the server emits progressive status frames so the client can display appropriate loading UI:
+   - On load start:
+     ```json
+     {
+       "type": "status",
+       "state": "loading_model",
+       "engine": "sensevoice"
+     }
+     ```
+   - On load completion:
+     ```json
+     {
+       "type": "status",
+       "state": "model_ready",
+       "engine": "sensevoice"
+     }
+     ```
+   - `engine`: Canonical identifier of the loading engine (`"sensevoice"` or `"indicconformer"`).
+   - Subsequent turns do not emit `status` events once the engine is resident in memory.
+   - **Configuration Preload**: To eliminate the first-turn lazy-load delay, set `PRELOAD_DEFAULT_ENGINE=true` in `backend/app/core/config.py` or via the environment. When enabled, the default engine (`SenseVoiceSmall`) is loaded once during application startup lifespan.
+
+5. **Speech Perception Result (`speech_result`)**:
    Emitted when a complete speech segment has finished processing through the non-blocking perception engine. Conforms to the unified `SpeechResult` schema.
    ```json
    {

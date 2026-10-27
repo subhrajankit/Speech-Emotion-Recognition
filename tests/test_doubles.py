@@ -101,6 +101,53 @@ class FakeIndicConformerEngine(SpeechEngine):
         )
 
 
+class SlowLoadingFakeEngine(SpeechEngine):
+    """
+    Explicit test double simulating a lazy-loading engine with a controlled delay.
+    Maintains is_loaded=False until load() is invoked.
+    """
+    def __init__(
+        self,
+        load_delay: float = 0.05,
+        simulated_transcript: str = "Loaded after delay.",
+        simulated_language: str = "en",
+    ):
+        self._load_delay = load_delay
+        self._simulated_transcript = simulated_transcript
+        self._simulated_language = simulated_language
+        self.is_loaded = False
+        self.load_count = 0
+
+    @property
+    def model_version(self) -> str:
+        return "SlowLoadingFakeEngine (tests-only double)"
+
+    def load(self) -> None:
+        import time
+        if self._load_delay > 0:
+            time.sleep(self._load_delay)
+        self.is_loaded = True
+        self.load_count += 1
+
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+        **kwargs
+    ) -> SpeechResult:
+        if not self.is_loaded:
+            self.load()
+        return SpeechResult(
+            transcript=self._simulated_transcript,
+            language=self._simulated_language,
+            emotion="neutral",
+            confidence=0.95,
+            processing_time_ms=10.0,
+            model_version=self.model_version,
+            debug={"status": "fake_slow_engine", "vad_has_speech": True},
+        )
+
+
 class FakeSileroVAD:
     """Explicit test double simulating Silero VAD without ONNX weights."""
     def __init__(self, has_speech: bool = True, speech_probability: float = 0.95):

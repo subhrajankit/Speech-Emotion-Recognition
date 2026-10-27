@@ -52,37 +52,39 @@ class SpeechService:
         auto_load = not settings.LAZY_LOAD_MODELS
 
         # 1. Initialize SenseVoiceSmall (Global ASR + SER)
-        try:
-            self._sensevoice = SenseVoiceSpeechEngine(
-                model_dir=settings.SENSEVOICE_MODEL_DIR,
-                device=settings.SENSEVOICE_DEVICE,
-                threads=settings.SENSEVOICE_THREADS,
-                vad_threshold=settings.VAD_THRESHOLD,
-                auto_load=auto_load,
-            )
-            self._init_error = None
-            logger.info("SenseVoice engine initialized successfully.")
-        except Exception as e:
-            logger.warning(f"Failed to initialize real SenseVoice model ({e}).")
-            self._init_error = str(e)
-            self._sensevoice = None
+        if self._sensevoice is None:
+            try:
+                self._sensevoice = SenseVoiceSpeechEngine(
+                    model_dir=settings.SENSEVOICE_MODEL_DIR,
+                    device=settings.SENSEVOICE_DEVICE,
+                    threads=settings.SENSEVOICE_THREADS,
+                    vad_threshold=settings.VAD_THRESHOLD,
+                    auto_load=auto_load,
+                )
+                self._init_error = None
+                logger.info("SenseVoice engine initialized successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize real SenseVoice model ({e}).")
+                self._init_error = str(e)
+                self._sensevoice = None
 
         # 2. Initialize IndicConformer-600m (Indic ASR)
-        try:
-            self._indicconformer = IndicConformerSpeechEngine(
-                model_dir=settings.INDICCONFORMER_MODEL_DIR,
-                model_revision=settings.INDICCONFORMER_REVISION,
-                device=settings.INDICCONFORMER_DEVICE,
-                decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
-                vad_threshold=settings.VAD_THRESHOLD,
-                auto_load=auto_load,
-            )
-            self._indic_init_error = None
-            logger.info("IndicConformer engine initialized successfully.")
-        except Exception as e:
-            logger.warning(f"Failed to initialize real IndicConformer model ({e}).")
-            self._indic_init_error = str(e)
-            self._indicconformer = None
+        if self._indicconformer is None:
+            try:
+                self._indicconformer = IndicConformerSpeechEngine(
+                    model_dir=settings.INDICCONFORMER_MODEL_DIR,
+                    model_revision=settings.INDICCONFORMER_REVISION,
+                    device=settings.INDICCONFORMER_DEVICE,
+                    decoder_type=settings.INDICCONFORMER_DECODER_TYPE,
+                    vad_threshold=settings.VAD_THRESHOLD,
+                    auto_load=auto_load,
+                )
+                self._indic_init_error = None
+                logger.info("IndicConformer engine initialized successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize real IndicConformer model ({e}).")
+                self._indic_init_error = str(e)
+                self._indicconformer = None
 
         # Default engine reference
         self._engine = self._sensevoice
@@ -93,6 +95,13 @@ class SpeechService:
             default_language="en",
             lid_confidence_threshold=settings.LID_CONFIDENCE_THRESHOLD,
         )
+
+        # Preload default engine if configured
+        if settings.PRELOAD_DEFAULT_ENGINE:
+            default_eng = self._sensevoice or self._engine
+            if default_eng is not None and hasattr(default_eng, "load"):
+                logger.info("PRELOAD_DEFAULT_ENGINE=True: preloading default engine...")
+                default_eng.load()
 
         self._is_initialized = True
         logger.info("SpeechService initialized with unified language routing.")
@@ -125,20 +134,16 @@ class SpeechService:
     def sensevoice(self) -> Optional[SenseVoiceSpeechEngine]:
         return self._sensevoice
 
-    async def transcribe_array(
+    def get_engine_for_utterance(
         self,
         audio: np.ndarray,
         sample_rate: int = 16000,
         language_hint: Optional[str] = None
-    ) -> SpeechResult:
+    ) -> tuple[SpeechEngine, str, RoutingDecision]:
         """
-        Runs language routing and inference off the event loop via threadpool
-        with bounded concurrency.
+        Determines the routing decision and returns the selected speech engine,
+        canonical engine name, and the routing decision.
         """
-        if not self.is_ready:
-            raise RuntimeError("SpeechService is not initialized.")
-
-        # 1. Determine routing decision with fallback safety
         try:
             if self._router is not None:
                 decision: RoutingDecision = self._router.route(
@@ -164,11 +169,44 @@ class SpeechService:
                 debug={"policy": "router_error_fallback", "error": str(route_err)}
             )
 
-        # 2. Select speech engine according to routing decision
         if decision.engine == "indicconformer" and self._indicconformer is not None:
             selected_engine: SpeechEngine = self._indicconformer
+            engine_name = "indicconformer"
         else:
             selected_engine = self._sensevoice or self._engine
+            engine_name = "sensevoice"
+
+        return selected_engine, engine_name, decision
+
+    async def transcribe_array(
+        self,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+        language_hint: Optional[str] = None,
+        status_callback: Optional[Any] = None,
+    ) -> SpeechResult:
+        """
+        Runs language routing and inference off the event loop via threadpool
+        with bounded concurrency. Notifies status_callback if lazy loading is triggered.
+        """
+        if not self.is_ready:
+            raise RuntimeError("SpeechService is not initialized.")
+
+        selected_engine, engine_name, decision = self.get_engine_for_utterance(
+            audio=audio,
+            sample_rate=sample_rate,
+            language_hint=language_hint,
+        )
+
+        # Notify and perform lazy loading if the engine is not yet resident
+        is_loaded = getattr(selected_engine, "is_loaded", True)
+        if not is_loaded:
+            if status_callback is not None:
+                await status_callback("loading_model", engine_name)
+            if hasattr(selected_engine, "load"):
+                await asyncio.to_thread(selected_engine.load)
+            if status_callback is not None:
+                await status_callback("model_ready", engine_name)
 
         sem = self._get_semaphore()
         try:
@@ -244,7 +282,8 @@ class SpeechService:
         self,
         pcm_bytes: bytes,
         sample_rate: int = 16000,
-        language_hint: Optional[str] = None
+        language_hint: Optional[str] = None,
+        status_callback: Optional[Any] = None,
     ) -> SpeechResult:
         """
         Converts raw 16kHz PCM16 bytes to float32 in memory and executes inference.
@@ -261,7 +300,8 @@ class SpeechService:
         return await self.transcribe_array(
             audio=float32_data,
             sample_rate=sample_rate,
-            language_hint=language_hint
+            language_hint=language_hint,
+            status_callback=status_callback,
         )
 
     def get_health_status(self) -> Dict[str, Any]:

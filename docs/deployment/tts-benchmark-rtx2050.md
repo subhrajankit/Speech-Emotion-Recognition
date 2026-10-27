@@ -12,8 +12,8 @@
 
 ### Phase 8 Truthfulness Statement:
 - **Plumbing verified with test doubles**: **[VERIFIED]** (All unit, service, and WebSocket integration tests pass with mocked/injected doubles).
-- **Real synthesis verified standalone**: **[VERIFIED]** (Direct synthesis runs inside `.venv-tts` via `scripts/measure_clamped_tts.py`, generating audio files with RTF 1.04–1.28 on GPU alone).
-- **Full real end-to-end on this 4 GB GPU**: **[FAILED / CRASHED]** (Child worker process in `.venv-tts` crashes with exit code 3221225477 / 0xC0000005 access violation across all test conditions; see Section 3.E).
+- **Real synthesis verified standalone**: **[VERIFIED]** (Direct synthesis runs inside `.venv-tts` via `scripts/measure_clamped_tts.py`. **Correction:** The earlier claim of RTF 1.04–1.28 does **NOT** reproduce. Standalone clamped runs recorded in `docs/deployment/runs/tts_llama_stopped.log` yield RTF **2.65–5.12** in float16 and **2.73–2.94** in bfloat16. With `llama-server` running (`docs/deployment/runs/tts_llama_running.log`), clamped RTF degrades to **4.52–8.32** in float16 and **5.95–8.03** in bfloat16).
+- **Full real end-to-end on this 4 GB GPU**: **[FAILED - SYSTEM MEMORY EXHAUSTION]** (Child worker process in `.venv-tts` fails during model checkpoint load with `OSError: The paging file is too small for this operation to complete. (os error 1455)` when loaded alongside resident uvicorn and llama-server; safely handled by typed `tts_unavailable` error event).
 
 ### Mandatory Configuration Invariant:
 ```env
@@ -27,24 +27,32 @@ On 4 GB VRAM mobile workstations, `TTS_ENABLED=false` is the **permanent require
 
 ## 2. Comprehensive Measured Benchmark Table
 
-All metrics below are measured real executions on the target machine with wall-clock timings and `nvidia-smi` telemetry. Each number is tied directly to its benchmark run file.
+All metrics below are measured real executions on the target machine with wall-clock timings and `nvidia-smi` telemetry. Each number is tied directly to its benchmark run file in `docs/deployment/runs/`.
 
 | Configuration | Loaded Models | Device | Dtype | Input Text | Audio Dur (s) | TTFC (s) | Total Time (s) | RTF | Peak VRAM (MiB) | Status | Benchmark Run Script |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TTS Standalone (Unconstrained)** | Parler-TTS alone | GPU | float16 | EN (5 words) | 30.30 | 28.54 | 28.54 | **0.94** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | 2.92 | 2.92 | **1.04** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | 3.20 | 3.20 | **1.21** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | EN (14 words) | 6.20 | 6.85 | 6.85 | **1.10** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | float16 | HI (14 words) | 5.80 | 7.42 | 7.42 | **1.28** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (5 words) | 2.80 | 3.01 | 3.01 | **1.07** | 2,160 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone | GPU | bfloat16 | EN (14 words) | 6.20 | 7.10 | 7.10 | **1.15** | 2,160 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | EN (5 words) | 2.80 | **1.32** | 2.95 | **1.05** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **TTS Streaming (play_steps=12)**| Parler-TTS alone | GPU | float16 | HI (5 words) | 2.65 | **1.45** | 3.25 | **1.23** | 2,150 | [VERIFIED] | `scripts/measure_clamped_tts.py` |
-| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | EN (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
-| **Candidate A (Concurrent)** | Qwen3-1.7B + Parler-TTS | GPU | float16 | HI (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
-| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
-| **Candidate B (CPU TTS)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (14 words)| - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
-| **Reversed Hybrid** | Qwen3 (CPU) + Parler (GPU) | Mixed | float16 | EN (5 words) | - | - | - | - | - | **NOT MEASURED** (no raw output file) | - |
+| **TTS Standalone (Unconstrained)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 5.84 | - | 33.45 | **5.73** | 2,647 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 1.24 | - | 6.35 | **5.12** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | HI (5 words) | 2.03 | - | 6.24 | **3.07** | 2,269 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (14 words) | 5.70 | - | 15.08 | **2.65** | 2,709 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | HI (14 words) | 5.41 | - | 14.33 | **2.65** | 2,555 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | EN (5 words) | 1.29 | - | 3.80 | **2.94** | 2,194 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | HI (5 words) | 2.68 | - | 7.66 | **2.86** | 2,330 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | EN (14 words) | 4.86 | - | 13.28 | **2.73** | 2,490 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | HI (14 words) | 5.12 | - | 14.32 | **2.80** | 2,580 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Streaming (play_steps=12)**| Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 1.08 | **0.68** | 5.71 | **5.28** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **TTS Streaming (play_steps=12)**| Parler-TTS alone (llama stopped) | GPU | float16 | HI (5 words) | 2.11 | **0.76** | 10.47 | **4.96** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (5 words) | 1.10 | - | 8.65 | **7.86** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (5 words) | 2.05 | - | 9.26 | **4.52** | 3,731 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (14 words) | 5.70 | - | 47.43 | **8.32** | 3,036 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (14 words) | 6.90 | - | 52.72 | **7.64** | 3,026 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | bfloat16 | EN (5 words) | 1.34 | - | 7.97 | **5.95** | 2,539 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | bfloat16 | HI (5 words) | 2.90 | - | 23.30 | **8.03** | 2,704 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent Streaming (p=12)**| Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (5 words) | 1.18 | **1.13** | 11.78 | **9.98** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **Concurrent Streaming (p=12)**| Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (5 words) | 2.19 | **1.42** | 21.24 | **9.70** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **CPU Standalone (12 threads)** | Parler-TTS alone (llama stopped) | CPU | float32 | EN (5 words) | 1.31 | - | 23.06 | **17.60** | - | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
+| **CPU Concurrent (12 threads)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | 1.50 | - | 36.70 | **24.46** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+
 
 *Generated WAV Artifacts (Verified with `ls` on Disk in `scripts/`):*
 - `scripts/bench_en_5w_float16_clamped.wav` (175,148 bytes, dur: 2.80s, sr: 44100)
@@ -89,9 +97,14 @@ To investigate the earlier exit code `3221225477` (`-1073741819` / `0xC0000005 S
    - Free Physical RAM after run: 5,741.0 MB; Commit Charge: 21,570.6 MB (57.0%).
    - **Result**: Under this lower commit charge, `scripts/measure_clamped_tts.py` **did not trigger an access violation**. It executed all float16, bfloat16, streaming chunk, and CPU synthesis passes successfully. (The script terminated with Python exit code 1 only during DAC tensor shape profiling at line 224).
 
-3. **Hypothesis**:
-   - The earlier access violation `0xC0000005` coincided with high memory/commit charge saturation caused by the active FastAPI backend holding model weights in host memory alongside the desktop environment.
-   - *Working Hypothesis*: Windows paging/WDDM memory segment faults under >80% commit charge precipitated the process termination. This remains a **hypothesis** until low-level memory dump tracing is performed.
+3. **Hypothesis & End-to-End Verification (Phase 8h)**:
+   - When running standalone with the backend stopped, `scripts/measure_clamped_tts.py` successfully synthesized audio on GPU in both float16 and bfloat16 without OS errors.
+   - However, during the real end-to-end test with `TTS_ENABLED=true`, `TTS_SENTENCE_TIMEOUT_SECONDS=120`, and resident `uvicorn` (with SenseVoice and RAG in host RAM) + `llama-server` on GPU, the child worker process (`tts_worker.py`) crashed with:
+     ```
+     OSError: The paging file is too small for this operation to complete. (os error 1455)
+     ```
+   - This proves that simultaneously committing memory for `llama-server` (1.5 GB VRAM + host context), `uvicorn` (SenseVoice, RAG embedder, Silero VAD ~5 GB commit), and the child `ParlerTTS` worker (~3.8 GB safetensors) exhausts the Windows commit charge / page file on 16 GB host RAM.
+   - The websocket server caught this cleanly and emitted `{"type": "error", "code": "tts_unavailable", ...}` without dropping the turn or connection.
 
 4. **Operational Directive**:
    > **Note on Memory**: Stop the dev server before running model tests (memory). On single-GPU systems with 16 GB host RAM, running concurrent heavy PyTorch model pipelines risks system memory thrashing and allocator failures.

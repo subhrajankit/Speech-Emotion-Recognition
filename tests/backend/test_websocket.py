@@ -702,4 +702,112 @@ def test_websocket_emits_error_when_engine_raises(client, monkeypatch):
         assert "Simulated speech engine failure" in err.get("message", "")
 
 
+def test_websocket_first_turn_lazy_load_status_events(client, monkeypatch):
+    """
+    Item 6b: First-turn lazy load status notifications.
+    When an engine is lazy-loaded on the first turn:
+    1. Emits {"type": "status", "state": "loading_model", "engine": "..."}
+    2. Model loads
+    3. Emits {"type": "status", "state": "model_ready", "engine": "..."}
+    4. Speech result emitted.
+    On subsequent turns, no status events are emitted because model is already resident.
+    """
+    from tests.test_doubles import SlowLoadingFakeEngine
+    from backend.app.services.speech_service import speech_service
+
+    slow_engine = SlowLoadingFakeEngine(load_delay=0.01)
+    monkeypatch.setattr(speech_service, "_sensevoice", slow_engine)
+    monkeypatch.setattr(speech_service, "_engine", slow_engine)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        # --- Turn 1: First turn with lazy loading ---
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        assert ws.receive_json().get("type") == "ready"
+
+        # Stream audio and stop
+        t = np.linspace(0, 0.5, 8000, endpoint=False, dtype=np.float32)
+        pcm_bytes = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16).tobytes()
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        events_turn1 = []
+        for _ in range(20):
+            try:
+                ev = ws.receive_json()
+                events_turn1.append(ev)
+                if ev.get("type") == "llm_done":
+                    break
+            except Exception:
+                break
+
+        types1 = [e.get("type") for e in events_turn1]
+        assert "status" in types1, f"Expected status events, got {types1}"
+        assert "speech_result" in types1
+
+        # Check status event contents and order
+        status_events = [e for e in events_turn1 if e.get("type") == "status"]
+        assert len(status_events) == 2
+        assert status_events[0] == {"type": "status", "state": "loading_model", "engine": "sensevoice"}
+        assert status_events[1] == {"type": "status", "state": "model_ready", "engine": "sensevoice"}
+
+        loading_idx = events_turn1.index(status_events[0])
+        ready_idx = events_turn1.index(status_events[1])
+        speech_idx = events_turn1.index(next(e for e in events_turn1 if e.get("type") == "speech_result"))
+        assert loading_idx < ready_idx < speech_idx
+
+        # --- Turn 2: Subsequent turn (engine resident) ---
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        assert ws.receive_json().get("type") == "ready"
+
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        events_turn2 = []
+        for _ in range(20):
+            try:
+                ev = ws.receive_json()
+                events_turn2.append(ev)
+                if ev.get("type") == "llm_done":
+                    break
+            except Exception:
+                break
+
+        types2 = [e.get("type") for e in events_turn2]
+        assert "status" not in types2, f"Turn 2 must NOT emit status events when model is loaded; got {types2}"
+        assert "speech_result" in types2
+
+
+def test_preload_default_engine_config(monkeypatch):
+    """
+    Confirms PRELOAD_DEFAULT_ENGINE config preloads the default engine at startup.
+    """
+    from tests.test_doubles import SlowLoadingFakeEngine
+    from backend.app.services.speech_service import SpeechService
+    from backend.app.core.config import settings
+
+    monkeypatch.setattr(settings, "PRELOAD_DEFAULT_ENGINE", True)
+    svc = SpeechService()
+    fake = SlowLoadingFakeEngine(load_delay=0.0)
+    svc._sensevoice = fake
+    svc._engine = fake
+
+    assert not fake.is_loaded
+    svc.initialize()
+    assert fake.is_loaded
+    assert fake.load_count == 1
+
+
+
 

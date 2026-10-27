@@ -60,12 +60,14 @@ class PromptBuilder:
         return LANGUAGE_NAMES.get(lang_code, lang_code)
 
     @classmethod
-    def resolve_emotion_instruction(cls, emotion: Optional[str]) -> str:
-        if not emotion or emotion.lower() in ("neutral", "none", "unknown"):
-            return "The user's tone is calm or neutral. Maintain a polite, warm, and natural conversational tone."
+    def resolve_emotion_instruction(cls, emotion: Optional[str]) -> Optional[str]:
+        if not emotion or emotion.lower().strip() in ("none", "unknown", "emo_unknown", "null"):
+            return None
         
         emo = emotion.lower().strip()
-        if emo in ("sad", "fearful", "disgusted"):
+        if emo == "neutral":
+            return "The user's tone is calm or neutral. Maintain a polite, warm, and natural conversational tone."
+        elif emo in ("sad", "fearful", "disgusted"):
             return f"The user's detected emotional tone is '{emo}'. Acknowledge this with brief, genuine empathy and reassurance, then directly answer."
         elif emo in ("happy", "surprised"):
             return f"The user's detected emotional tone is '{emo}'. Maintain an upbeat, encouraging, and supportive tone."
@@ -83,13 +85,22 @@ class PromptBuilder:
         """
         Constructs the system prompt including detected emotion guidance
         and language matching instructions.
+        When emotion is null, None, or unknown, no tone statement is emitted.
         """
         emotion_instruction = cls.resolve_emotion_instruction(emotion)
         language_display = cls.resolve_language_display(language)
 
-        return cls.DEFAULT_SYSTEM_TEMPLATE.format(
-            emotion_instruction=emotion_instruction,
-            language_display=language_display
+        guidelines = []
+        if emotion_instruction:
+            guidelines.append(f"Emotion Awareness: {emotion_instruction}")
+        guidelines.append("Spoken Conciseness: Answer concisely in 1 to 2 clear sentences suitable for spoken audio playback.")
+        guidelines.append("No Reasoning Chains: Never produce internal thoughts, chain-of-thought, or long reasoning explanations. Provide only the direct spoken response.")
+        guidelines.append(f"Language & Tone: Reply in the user's spoken language ({language_display}) naturally.")
+
+        numbered_guidelines = "\n".join(f"{i+1}. {g}" for i, g in enumerate(guidelines))
+        return (
+            "You are SenseAI, an empathetic, helpful, and concise multilingual voice assistant.\n"
+            f"Strict Guidelines:\n{numbered_guidelines}"
         )
 
     @classmethod

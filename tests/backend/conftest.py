@@ -13,8 +13,9 @@ from backend.app.core.config import settings
 from backend.app.main import create_app
 
 
-from tests.test_doubles import FakeSenseVoiceEngine, FakeIndicConformerEngine
+from tests.test_doubles import FakeSenseVoiceEngine, FakeIndicConformerEngine, FakeEmbeddings
 from backend.app.services.speech_service import speech_service
+from backend.app.services.rag_service import rag_service
 
 
 @pytest.fixture
@@ -35,6 +36,11 @@ def app():
     speech_service._init_error = None
     speech_service._indic_init_error = None
     speech_service._is_initialized = True
+
+    if not rag_service.is_initialized or rag_service.embedder is None:
+        rag_service.embedder = FakeEmbeddings()
+        rag_service.is_initialized = True
+        rag_service._init_error = None
 
     application = create_app()
     return application

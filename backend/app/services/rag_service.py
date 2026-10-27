@@ -56,16 +56,17 @@ class RAGService:
         """
         logger.info("Initializing RAGService...")
         self._init_error: Optional[str] = None
-        try:
-            self.embedder = MultilingualE5Embeddings(
-                model_id=self.model_id,
-            )
-        except Exception as e:
-            logger.error(f"RAGService failed to initialize embedder: {e}")
-            self.embedder = None
-            self._init_error = str(e)
-            self.is_initialized = False
-            return
+        if self.embedder is None:
+            try:
+                self.embedder = MultilingualE5Embeddings(
+                    model_id=self.model_id,
+                )
+            except Exception as e:
+                logger.error(f"RAGService failed to initialize embedder: {e}")
+                self.embedder = None
+                self._init_error = str(e)
+                self.is_initialized = False
+                return
 
         self.vectorstore = FAISSVectorStore(
             dimension=EMBEDDING_DIMENSION,
