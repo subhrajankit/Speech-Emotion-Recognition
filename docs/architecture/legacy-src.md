@@ -36,3 +36,16 @@ The legacy tree represents the pre-migration baseline architecture. It has been 
 1. **Quarantine Preserved**: `src/` remains in place without deletion to serve as a reference implementation for future phases (such as Phase 9 WebTransport and Phase 10 Auth/Dashboard).
 2. **Strict Isolation**: No files in `backend/app/`, `ai/`, or `rag/` may import from `src/`.
 3. **No Unrequested Terminology**: Features such as hash-chained audit logging, audio anti-spoofing liveness detection, and WebTransport were part of the initial commit (`ebd84078`). They are properly designated as **legacy implementations, not wired into the target architecture**.
+
+---
+
+## 3. References to the Legacy Tree to Fix in Phase 11
+
+The following configuration files and utility scripts reference `src/` or `src.backend` paths and are scheduled for remediation in Phase 11 (Containerization & Deployment Hardening):
+
+1. **`docker/Dockerfile.backend`**: References `COPY src/backend/requirements.txt` and `CMD ["uvicorn", "src.backend.main:app"]`. Update to package `backend/app/main:app`.
+2. **`docker/Dockerfile.frontend`**: References `COPY src/frontend/package*.json` and `COPY src/frontend/`. Update to package active `frontend/`.
+3. **`docker/docker-compose.yml`**: Mounts `../src/frontend:/app`. Update to mount `../frontend:/app`.
+4. **`scripts/measure_stages.py`**: Legacy benchmarking harness importing `src.backend.config`, `src.backend.models.manager`, and `src.backend.pipeline.orchestrator`. Update to import canonical services in `backend.app.services`.
+5. **`scripts/database/build_rag_index.py`**: Replaced in Phase 8g with a pointer to canonical `rag.ingestion` (`python -m rag.ingestion`). In Phase 11, consolidate directly into production CLI tooling.
+

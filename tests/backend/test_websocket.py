@@ -653,3 +653,53 @@ def test_websocket_tts_failure_isolation(client, monkeypatch):
         assert ws.receive_json().get("type") == "pong"
 
 
+def test_websocket_emits_error_when_engine_raises(client, monkeypatch):
+    """
+    Confirms that when the speech engine raises an exception during transcription,
+    the server sends an explicit {"type": "error", "code": "INFERENCE_ERROR"}
+    event over the WebSocket before any disconnect or close occurs.
+    """
+    from backend.app.services.speech_service import speech_service
+
+    async def mock_failing_transcribe(*args, **kwargs):
+        raise RuntimeError("Simulated speech engine failure: DLL load failed")
+
+    monkeypatch.setattr(speech_service, "transcribe_pcm16_bytes", mock_failing_transcribe)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        # 1. Start session
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        ready_evt = ws.receive_json()
+        assert ready_evt.get("type") == "ready"
+
+        # 2. Stream audio and stop to flush
+        t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+        pcm_bytes = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16).tobytes()
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        # 3. Receive events; must receive error event with code INFERENCE_ERROR
+        received_events = []
+        for _ in range(10):
+            try:
+                ev = ws.receive_json()
+                received_events.append(ev)
+                if ev.get("type") == "error":
+                    break
+            except Exception:
+                break
+
+        types = [e.get("type") for e in received_events]
+        assert "error" in types, f"Server must emit error event before close; got events: {types}"
+        err = next(e for e in received_events if e.get("type") == "error")
+        assert err.get("code") == "INFERENCE_ERROR"
+        assert "Simulated speech engine failure" in err.get("message", "")
+
+
+

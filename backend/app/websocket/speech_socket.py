@@ -449,11 +449,12 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         )
                     except Exception as e:
                         logger.error(f"Inference error on completed utterance: {e}")
-                        await websocket.send_json({
+                        await safe_send_json(websocket, {
                             "type": "error",
                             "code": "INFERENCE_ERROR",
                             "message": str(e)
                         })
+
 
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected cleanly.")

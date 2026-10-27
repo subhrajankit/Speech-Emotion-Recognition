@@ -217,15 +217,17 @@ def main():
     
     # Check sequences shape
     seqs = out.sequences
-    print(f"Generated tokens shape: {seqs.shape} in {gen_time:.3f}s")
-    t2 = time.perf_counter()
-    with torch.no_grad():
-        # Codebook decode
-        dac_audio = model_gpu.audio_encoder.decode(seqs).audio_values
-    t3 = time.perf_counter()
-    dac_time = t3 - t2
-    print(f"Autoregressive generation time: {gen_time:.3f}s ({gen_time/(gen_time+dac_time)*100:.1f}%)")
-    print(f"DAC audio decode time: {dac_time:.3f}s ({dac_time/(gen_time+dac_time)*100:.1f}%)")
+    try:
+        t2 = time.perf_counter()
+        with torch.no_grad():
+            dac_audio = model_gpu.audio_encoder.decode(seqs.unsqueeze(1)).audio_values
+        t3 = time.perf_counter()
+        dac_time = t3 - t2
+        print(f"Autoregressive generation time: {gen_time:.3f}s ({gen_time/(gen_time+dac_time)*100:.1f}%)")
+        print(f"DAC audio decode time: {dac_time:.3f}s ({dac_time/(gen_time+dac_time)*100:.1f}%)")
+    except Exception as e:
+        print(f"DAC profiling check skipped ({e})")
+
     
     del model_gpu
     torch.cuda.empty_cache()
