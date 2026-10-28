@@ -1,0 +1,29 @@
+2026-10-28 11:24:43,596 [INFO] rag.ingestion: === Starting RAG Document Ingestion ===
+2026-10-28 11:24:43,596 [INFO] rag.ingestion: Documents directory: 'D:\Capstone Project\NewSenseVoice\data\documents'
+2026-10-28 11:24:43,597 [INFO] rag.ingestion: Target index directory: 'D:\Capstone Project\NewSenseVoice\data\index'
+2026-10-28 11:24:43,597 [INFO] rag.ingestion: Chunk parameters: size=500, overlap=100
+2026-10-28 11:24:43,597 [INFO] rag.ingestion: Embedding model: 'intfloat/multilingual-e5-small' (dim=384)
+2026-10-28 11:24:43,597 [INFO] rag.chunking: Processed document 'company_policy.md': 2 chunks created.
+2026-10-28 11:24:43,597 [INFO] rag.chunking: Processed document 'developer_guide.md': 1 chunks created.
+2026-10-28 11:24:43,598 [INFO] rag.chunking: Processed document 'warranty_terms.txt': 2 chunks created.
+2026-10-28 11:24:43,598 [INFO] rag.ingestion: Chunking complete: 5 chunks extracted across 3 document(s).
+2026-10-28 11:24:43,598 [INFO] rag.ingestion: Generating embeddings for 5 passages (prefix='passage: ')...
+2026-10-28 11:25:51,741 [INFO] rag.embeddings: Loading embedding model 'intfloat/multilingual-e5-small' on cpu...
+2026-10-28 11:25:52,865 [INFO] httpx2: HTTP Request: GET https://huggingface.co/api/models/intfloat/multilingual-e5-small "HTTP/1.1 200 OK"
+2026-10-28 11:25:53,653 [INFO] httpx2: HTTP Request: HEAD https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/config_sentence_transformers.json "HTTP/1.1 404 Not Found"
+2026-10-28 11:25:53,654 [INFO] sentence_transformers.base.model: Loading SentenceTransformer model from intfloat/multilingual-e5-small.
+2026-10-28 11:25:53,938 [INFO] httpx2: HTTP Request: HEAD https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/config_sentence_transformers.json "HTTP/1.1 404 Not Found"
+Loading weights: 100%|##########| 199/199 [00:00<00:00, 632.76it/s]
+2026-10-28 11:25:56,270 [INFO] httpx2: HTTP Request: GET https://huggingface.co/api/models/intfloat/multilingual-e5-small/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-10-28 11:25:56,571 [INFO] httpx2: HTTP Request: GET https://huggingface.co/api/models/intfloat/multilingual-e5-small/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-10-28 11:26:00,016 [INFO] httpx2: HTTP Request: GET https://huggingface.co/api/models/intfloat/multilingual-e5-small "HTTP/1.1 200 OK"
+2026-10-28 11:26:00,628 [INFO] httpx2: HTTP Request: HEAD https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/2_Normalize/config.json "HTTP/1.1 404 Not Found"
+2026-10-28 11:26:00,634 [INFO] rag.embeddings: MultilingualE5Embeddings loaded successfully.
+2026-10-28 11:26:01,269 [INFO] rag.ingestion: Embeddings generated in 77.671s (15534.2ms/chunk). Shape: (5, 384)
+2026-10-28 11:26:01,277 [INFO] rag.vectorstore: Built vector index with 5 chunks (dimension: 384, model: intfloat/multilingual-e5-small, backend=faiss).
+2026-10-28 11:26:01,298 [INFO] rag.vectorstore: Saved vector index, chunks, and metadata to 'data\index'.
+2026-10-28 11:26:01,298 [INFO] rag.ingestion: === Ingestion Finished Successfully ===
+2026-10-28 11:26:01,299 [INFO] rag.ingestion: Total time: 77.702s
+2026-10-28 11:26:01,299 [INFO] rag.ingestion: Total documents: 3
+2026-10-28 11:26:01,299 [INFO] rag.ingestion: Total chunks: 5
+2026-10-28 11:26:01,301 [INFO] rag.ingestion: Index location: 'D:\Capstone Project\NewSenseVoice\data\index'

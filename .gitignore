@@ -92,6 +92,9 @@ logs/*
 !logs/.gitkeep
 *.log
 
+# Exception: run evidence logs saved as .txt in docs/deployment/runs/ are tracked
+!docs/deployment/runs/*.txt
+
 # IDE & OS & Tooling
 .vscode/
 .idea/

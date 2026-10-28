@@ -1,0 +1,33 @@
+======================================================================
+HARD INTENT ROUTER GATE EVALUATION (50 LABELLED EXAMPLES)
+Dataset composition: 25 'chat', 25 'knowledge_query'
+Categories: Distractor policy/warranty words in chat, short follow-ups,
+            general knowledge out-of-scope, subtle implicit doc queries.
+NOTICE: Authored by the same agent, indicative only.
+======================================================================
+Router loaded in 48.60s
+
+Overall Accuracy: 47/50 (94.0%)
+Latency: Mean = 119.14 ms (Min = 0.02 ms, Max = 679.05 ms)
+
+Confusion Matrix:
+                Predicted CHAT  Predicted KNOWLEDGE
+  Actual CHAT:        23               2
+  Actual KNOWLEDGE:    1              24
+
+Metrics Breakdown:
+  Knowledge Query: Precision = 0.923, Recall = 0.960, F1 = 0.941
+  Conversational Chat: Precision = 0.958, Recall = 0.920, F1 = 0.939
+
+Misclassified Examples Count: 3
+----------------------------------------------------------------------
+[hard_chat_05] Category: distractor_handbook_word | Lang: en
+  Query: "My dad has a strict handbook about house rules when we visit."
+  Expected: chat | Predicted: knowledge_query (via embedding_similarity, score=0.8248)
+[hard_chat_08] Category: distractor_hinglish_policy | Lang: hi-Latn
+  Query: "Meri personal policy simple hai, hamesha sach bolo aur khush raho."
+  Expected: chat | Predicted: knowledge_query (via embedding_similarity, score=0.8498)
+[hard_know_10] Category: section_citation | Lang: en
+  Query: "What does section 4.2 say about intellectual property rights?"
+  Expected: knowledge_query | Predicted: chat (via default_chat, score=0.7368)
+----------------------------------------------------------------------

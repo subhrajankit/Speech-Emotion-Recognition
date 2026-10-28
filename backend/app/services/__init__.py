@@ -6,6 +6,7 @@ from .llm_service import (
     LLMUnavailable,
     LLMTimeout,
     LLMResponseError,
+    LLMBadResponse,
 )
 from .prompt_builder import PromptBuilder
 
@@ -29,6 +30,7 @@ __all__ = [
     "LLMUnavailable",
     "LLMTimeout",
     "LLMResponseError",
+    "LLMBadResponse",
     "PromptBuilder",
     "rag_service",
     "RAGService",

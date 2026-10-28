@@ -20,6 +20,7 @@ from backend.app.services.llm_service import (
     LLMUnavailable,
     LLMTimeout,
     LLMResponseError,
+    LLMBadResponse,
 )
 from backend.app.services.prompt_builder import PromptBuilder
 from backend.app.services.rag_service import rag_service
@@ -180,6 +181,14 @@ async def handle_llm_turn(
     except asyncio.CancelledError:
         logger.info("In-flight turn stream cancelled (barge-in / disconnect).")
         raise
+
+    except LLMBadResponse as e:
+        logger.warning(f"LLM bad response: {e}")
+        await safe_send_json(websocket, {
+            "type": "error",
+            "code": "llm_bad_response",
+            "message": str(e),
+        })
 
     except (LLMUnavailable, LLMTimeout, LLMResponseError, LLMError) as e:
         logger.warning(f"LLM generation failed: {e}")

@@ -1,0 +1,39 @@
+# CLI Transcription: english_speech_16k.wav
+# Command: .venv\Scripts\python -m ai.inference.sensevoice tests/samples/english_speech_16k.wav
+# Date: 2026-10-28T10:50:31+0530
+# Session: Phase 8i evidence reconciliation
+
+2026-10-28 10:50:31,392 [INFO] Loading SenseVoiceSmall from 'iic/SenseVoiceSmall' on cpu...
+2026-10-28 10:50:31,394 [INFO] download models from model hub: ms
+2026-10-28 10:50:39,599 | INFO    | modelscope_hub.download | Downloading 20 files from iic/SenseVoiceSmall@master
+Notice: ffmpeg is not installed. torchaudio is used to load audio
+funasr version: 1.4.16.
+Downloading: 100%|##########| 20/20 [00:02<00:00,  9.19file/s]
+2026-10-28 10:50:41,874 [WARNING] trust_remote_code: False
+2026-10-28 10:50:45,434 [INFO] Loading pretrained params from C:\Users\subhr\.cache\modelscope\models\iic--SenseVoiceSmall\snapshots\master\model.pt
+2026-10-28 10:50:47,615 [INFO] Loading ckpt status: <All keys matched successfully>
+2026-10-28 10:50:47,798 [INFO] SenseVoiceSmall model loaded successfully.
+rtf_avg: 0.361: 100%|##########| 1/1 [00:02<00:00,  2.97s/it]
+{
+  "transcript": "Voice sense A provides multilingual and emotion or air voice systems across 23 in languages.",
+  "language": "en",
+  "emotion": "neutral",
+  "confidence": null,
+  "processing_time_ms": 3190,
+  "model_version": "SenseVoiceSmall (funasr)",
+  "emotion_scores": null,
+  "audio_events": [
+    "Speech"
+  ],
+  "segments": [],
+  "debug": {
+    "raw_tags": [
+      "<|en|>",
+      "<|NEUTRAL|>",
+      "<|Speech|>",
+      "<|withitn|>"
+    ],
+    "raw_length": 130,
+    "vad_has_speech": true
+  }
+}

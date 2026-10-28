@@ -240,3 +240,26 @@ def test_websocket_knowledge_query_and_chat_turn_events(monkeypatch, tmp_path):
 
         chat_done_ev = next(e for e in chat_events if e.get("type") == "llm_done")
         assert chat_done_ev["sources"] == []
+
+
+def test_rag_service_initialization_single_embedder_no_runtime_rebuild(tmp_path):
+    """
+    Phase 8i Item 3: Confirm that RAGService constructs/reuses exactly one embedder
+    and rebuilds nothing across repeated initialize() calls at runtime.
+    """
+    fake_emb = FakeEmbeddings()
+    service = RAGService(
+        index_dir=str(tmp_path),
+    )
+    service.embedder = fake_emb
+    # First initialization
+    service.initialize()
+    first_embedder_id = id(service.embedder)
+    assert service.embedder is fake_emb
+
+    # Second initialization at runtime: MUST NOT reconstruct or replace embedder
+    service.initialize()
+    second_embedder_id = id(service.embedder)
+    assert first_embedder_id == second_embedder_id
+    assert service.embedder is fake_emb
+

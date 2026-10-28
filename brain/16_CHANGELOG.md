@@ -2,6 +2,25 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 8i - Close-Out] - Reconcile Evidence, Fix SAC & Hindi Wording, LLM Robustness & Truth Table (2026-10-28)
+- **Evidence Reconciliation**:
+  - English ASR: `english_speech_16k.wav` (SHA256: `ED2570C2AE49BDF8F6E76927BFC93595E558CBCDC8425FCAA4187692F2820CF2`, 263,450 bytes, mtime 2026-10-26 14:57:12, synthetic audio) was never replaced. The 8h report transcript "HELLO THIS IS A TEST OF SENSEVOICE" was a reconstructed/hallucinated string. Ground truth transcription is *"Voice sense A provides multilingual and emotion or air voice systems across 23 in languages."* Live WebSocket produces two segments due to VAD pause (Segment 1: *"Vice sense, yeah."*). Untrimmed logs saved to `docs/deployment/runs/cli_english_speech_8i.txt` and `docs/deployment/runs/ws_english_speech_8i.txt`.
+  - RAG Documents: `data/documents/` contains `company_policy.md` (624B), `developer_guide.md` (479B), `warranty_terms.txt` (571B) (5 chunks in `data/index/chunks.json`). The 8h report's mention of `company_faq.md`, `hr_policy.md`, `it_support.md` was a hallucinated summary; re-ran ingestion with raw output saved to `docs/deployment/runs/rag_ingestion_8i.txt`.
+  - Hard Gate Numbers: `git diff 6a0bb88 HEAD -- rag/` is completely empty. The hard dataset composition was always 25 chat / 25 knowledge_query. Ground truth accuracy is 94.0% (47/50) with 3 errors (`hard_chat_05`, `hard_chat_08`, `hard_know_10`). 8h report numbers were superseded. Saved run in `docs/deployment/runs/hard_gate_eval_8i.txt`.
+  - Run Logs Tracked: Added `.gitignore` exception `!docs/deployment/runs/*.txt` and renamed `.log` files to `.txt`.
+  - Smart App Control Wording: Corrected `docs/architecture/phase-9-handover.md` to: *"SAC was turned off by the user on build 26200.9711; whether it can be re-enabled depends on the build; check Windows Security settings."*
+  - Hindi Greeting: Confirmed by speaker that they DID NOT say "नमस्ते" at the start of `tests/samples/sample_hindi_speech.wav`. Spoken prompt was *"आज मौसम बहुत अच्छा है।"*. Updated `docs/architecture/language-routing.md`.
+- **LLM Robustness**:
+  - Mapped HTTP 500 peg-native parsing error to typed `LLMBadResponse` in `llm_service.py` with WebSocket error code `llm_bad_response`, keeping socket open and recording cool-down failures.
+  - Added sampling parameters (`LLM_REPEAT_PENALTY: 1.1`, `LLM_FREQUENCY_PENALTY: 0.2`, `LLM_MAX_TOKENS: 120`) to `backend/app/core/config.py` and `llm_service.py`.
+  - Re-ran 5 Hindi queries to Qwen3-1.7B: 0 repetition loops, 0 crashes, and 0 500 errors.
+- **RAG Service Change Review**:
+  - Verified single embedder reuse in `RAGService.initialize()`; confirmed production constructs exactly one embedder and rebuilds nothing at runtime. Added test `test_rag_service_initialization_single_embedder_no_runtime_rebuild`.
+- **Memory Facts & WinError 1455**:
+  - Measured live pagefile and commit telemetry: Peak commit limit 32,176 MB, Base idle 22,175 MB (68.9%), SenseVoice loaded 27,363 MB (85.0%), IndicConformer loaded 30,280 MB (94.1%), leaving only 1,896 MB commit headroom. Proving why 3.8GB Parler-TTS worker triggers WinError 1455.
+- **Truth Table**:
+  - Authored `docs/architecture/status.md` with full component status breakdown.
+
 ## [Phase 8e - Settle Legacy Tree and Prove What Runs] - Quarantine Legacy Tree, CTC vs RNNT Fair Benchmark, Live WebSocket Proof (2026-10-27)
 - **Legacy Tree Quarantine (Option b)**:
   - Baseline commit identified: `ebd840783e31011cece9b7c03d350ede69a0cfed` (merge-base with main).

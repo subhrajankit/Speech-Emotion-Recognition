@@ -42,6 +42,11 @@ class LLMResponseError(LLMError):
     pass
 
 
+class LLMBadResponse(LLMError):
+    """Raised when the LLM server returns a bad response body (e.g. 500 peg-native parsing error)."""
+    pass
+
+
 # ==============================================================================
 # Thinking Tag Filter Helper
 # ==============================================================================
@@ -296,6 +301,10 @@ class LLMService:
         stream: bool = True,
         max_tokens: Optional[int] = None,
         timeout: Optional[float] = None,
+        temperature: Optional[float] = None,
+        repeat_penalty: Optional[float] = None,
+        frequency_penalty: Optional[float] = None,
+        presence_penalty: Optional[float] = None,
     ) -> Union[str, AsyncGenerator[str, None]]:
         """
         Generates completion from local llama.cpp server.
@@ -317,7 +326,10 @@ class LLMService:
             "messages": messages,
             "max_tokens": token_limit,
             "stream": stream,
-            "temperature": 0.7,
+            "temperature": temperature if temperature is not None else settings.LLM_TEMPERATURE,
+            "repeat_penalty": repeat_penalty if repeat_penalty is not None else settings.LLM_REPEAT_PENALTY,
+            "frequency_penalty": frequency_penalty if frequency_penalty is not None else settings.LLM_FREQUENCY_PENALTY,
+            "presence_penalty": presence_penalty if presence_penalty is not None else settings.LLM_PRESENCE_PENALTY,
             # Explicitly disable thinking mode for low voice latency
             "chat_template_kwargs": {
                 "enable_thinking": self._enable_thinking
@@ -341,6 +353,8 @@ class LLMService:
             res = await client.post(url, json=payload)
             if res.status_code != 200:
                 err_msg = f"LLM server returned status {res.status_code}: {res.text}"
+                if res.status_code == 500 and ("peg-native" in res.text or "The model produced output that does not match" in res.text):
+                    raise LLMBadResponse(err_msg)
                 if res.status_code >= 500:
                     raise LLMUnavailable(err_msg)
                 raise LLMResponseError(err_msg)
@@ -360,6 +374,9 @@ class LLMService:
         except httpx.TimeoutException as e:
             self._record_failure(e)
             raise LLMTimeout(f"LLM request timed out after {timeout}s: {e}") from e
+        except LLMBadResponse as e:
+            self._record_failure(e)
+            raise
         except LLMError as e:
             self._record_failure(e)
             raise
@@ -384,7 +401,10 @@ class LLMService:
             async with client.stream("POST", url, json=payload) as response:
                 if response.status_code != 200:
                     err_text = await response.aread()
-                    err_msg = f"LLM streaming endpoint returned status {response.status_code}: {err_text.decode('utf-8', errors='ignore')}"
+                    decoded_err = err_text.decode('utf-8', errors='ignore')
+                    err_msg = f"LLM streaming endpoint returned status {response.status_code}: {decoded_err}"
+                    if response.status_code == 500 and ("peg-native" in decoded_err or "The model produced output that does not match" in decoded_err):
+                        raise LLMBadResponse(err_msg)
                     if response.status_code >= 500:
                         raise LLMUnavailable(err_msg)
                     raise LLMResponseError(err_msg)
@@ -427,6 +447,9 @@ class LLMService:
         except httpx.TimeoutException as e:
             self._record_failure(e)
             raise LLMTimeout(f"LLM stream timed out after {timeout}s: {e}") from e
+        except LLMBadResponse as e:
+            self._record_failure(e)
+            raise
         except LLMError as e:
             self._record_failure(e)
             raise

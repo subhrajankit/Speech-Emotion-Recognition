@@ -506,5 +506,16 @@
   - Sub-real-time (RTF < 1.0) Hindi ASR execution on host CPU without GPU memory contention.
   - Transparent, adversarial testing without synthetic metric claims.
 
+## ADR 033: Phase 8i Close-Out — LLM Robustness Error Mapping, Sampling Guardrails & Memory Invariants
+- **Context**:
+  In Phase 8h empirical testing, Qwen3-1.7B occasionally looped on Hindi generation or threw an HTTP 500 error ("does not match the expected peg-native format"). Additionally, simultaneous resident model loading on 16GB host RAM resulted in WinError 1455 paging limit failure when TTS attempted to allocate ~3.8GB.
+- **Decision**:
+  1. **Typed LLMBadResponse Error Mapping**: Mapped HTTP 500 peg-native parsing crashes to `LLMBadResponse` in `llm_service.py`. The WebSocket handler emits `{"type":"error","code":"llm_bad_response"}` without terminating or disconnecting the client connection. Cooldown failure tracking increments appropriately.
+  2. **Voice Sampling Guardrails**: Introduced `LLM_REPEAT_PENALTY=1.1`, `LLM_FREQUENCY_PENALTY=0.2`, `LLM_PRESENCE_PENALTY=0.0`, and capped `LLM_MAX_TOKENS=120` in `backend/app/core/config.py`. In a 5-run empirical test, this eliminated degenerative token repetition and 500 parsing errors.
+  3. **RAG Single-Embedder Invariant**: Enforced that `RAGService.initialize()` reuses any existing embedder and constructs exactly one embedder across application lifetime, avoiding redundant network checks and model rebuilds.
+- **Consequences**:
+  - Resilient WebSocket turn-taking that survives intermittent model generation faults.
+  - Repetition-free Hindi responses within tight conversational token budgets.
+
 
 

@@ -259,6 +259,80 @@ def test_websocket_speech_result_before_llm_and_error_keeps_socket_open(client, 
         assert pong.get("type") == "pong"
 
 
+def test_websocket_handles_llm_bad_response_500_peg_native_without_disconnecting(client, monkeypatch):
+    """
+    Phase 8i Item 2a: When llama-server returns HTTP 500 peg-native parsing error,
+    verify that the turn ends with {"type":"error","code":"llm_bad_response"}
+    and the WebSocket connection remains OPEN and functional.
+    """
+    import httpx
+    import json
+    from backend.app.services.llm_service import llm_service
+
+    error_body = json.dumps({
+        "error": {
+            "code": 500,
+            "message": "The model produced output that does not match the expected peg-native format",
+            "type": "server_error"
+        }
+    })
+
+    async def peg_native_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text=error_body, headers={"content-type": "application/json"})
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(peg_native_handler))
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        ready_msg = ws.receive_json()
+        assert ready_msg.get("type") == "ready"
+
+        sample_path = Path("tests/samples/sample_chinese_speech.wav")
+        if sample_path.is_file():
+            data, _ = sf.read(str(sample_path), dtype="int16")
+            pcm_bytes = data[:32000].tobytes()
+        else:
+            t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+            samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+            pcm_bytes = samples.tobytes()
+
+        chunk_size = 1024
+        for i in range(0, len(pcm_bytes), chunk_size):
+            ws.send_bytes(pcm_bytes[i : i + chunk_size])
+
+        ws.send_json({"type": "stop"})
+
+        events = []
+        for _ in range(10):
+            try:
+                ev = ws.receive_json()
+                events.append(ev)
+                if ev.get("type") in ("error", "llm_done"):
+                    break
+            except Exception:
+                break
+
+        event_types = [e.get("type") for e in events]
+        assert "speech_result" in event_types
+
+        assert "error" in event_types, f"Expected error event, got {event_types}"
+        err_idx = event_types.index("error")
+        err_event = events[err_idx]
+        assert err_event.get("code") == "llm_bad_response"
+
+        # Verify socket is STILL OPEN and responsive
+        ws.send_json({"type": "ping"})
+        pong = ws.receive_json()
+        assert pong.get("type") == "pong"
+
+
+
 def test_websocket_llm_streaming_success_ordering(client, monkeypatch):
     """
     Requirement 5: Stream llm_delta events and final llm_done after speech_result.
@@ -714,6 +788,13 @@ def test_websocket_first_turn_lazy_load_status_events(client, monkeypatch):
     """
     from tests.test_doubles import SlowLoadingFakeEngine
     from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+    import httpx
+
+    mock_llm_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, text='data: [DONE]\n\n'))
+    )
+    monkeypatch.setattr(llm_service, "_custom_client", mock_llm_client)
 
     slow_engine = SlowLoadingFakeEngine(load_delay=0.01)
     monkeypatch.setattr(speech_service, "_sensevoice", slow_engine)
@@ -741,7 +822,7 @@ def test_websocket_first_turn_lazy_load_status_events(client, monkeypatch):
             try:
                 ev = ws.receive_json()
                 events_turn1.append(ev)
-                if ev.get("type") == "llm_done":
+                if ev.get("type") in ("llm_done", "error"):
                     break
             except Exception:
                 break
@@ -779,7 +860,7 @@ def test_websocket_first_turn_lazy_load_status_events(client, monkeypatch):
             try:
                 ev = ws.receive_json()
                 events_turn2.append(ev)
-                if ev.get("type") == "llm_done":
+                if ev.get("type") in ("llm_done", "error"):
                     break
             except Exception:
                 break

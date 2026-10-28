@@ -1,0 +1,510 @@
+﻿python.exe : D:\Capstone Project\NewSenseVoice\.venv-tts\Lib\site-packages\torch\jit\_script.py:1491: FutureWarning: 
+`torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+At line:1 char:1
++ & ".\.venv-tts\Scripts\python.exe" scripts/measure_clamped_tts.py *>  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\Capstone Pro...`torch.export`.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  warnings.warn(
+Flash attention 2 is not installed
+Config of the text_encoder: <class 'transformers.models.t5.modeling_t5.T5EncoderModel'> is overwritten by shared 
+text_encoder config: T5Config {
+  "_name_or_path": "google/flan-t5-large",
+  "architectures": [
+    "T5ForConditionalGeneration"
+  ],
+  "classifier_dropout": 0.0,
+  "d_ff": 2816,
+  "d_kv": 64,
+  "d_model": 1024,
+  "decoder_start_token_id": 0,
+  "dense_act_fn": "gelu_new",
+  "dropout_rate": 0.1,
+  "eos_token_id": 1,
+  "feed_forward_proj": "gated-gelu",
+  "initializer_factor": 1.0,
+  "is_encoder_decoder": true,
+  "is_gated_act": true,
+  "layer_norm_epsilon": 1e-06,
+  "model_type": "t5",
+  "n_positions": 512,
+  "num_decoder_layers": 24,
+  "num_heads": 16,
+  "num_layers": 24,
+  "output_past": true,
+  "pad_token_id": 0,
+  "relative_attention_max_distance": 128,
+  "relative_attention_num_buckets": 32,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "vocab_size": 32128
+}
+
+Config of the audio_encoder: <class 'transformers.models.dac.modeling_dac.DacModel'> is overwritten by shared 
+audio_encoder config: DacConfig {
+  "_name_or_path": "ylacombe/dac_44khz",
+  "architectures": [
+    "DacModel"
+  ],
+  "codebook_dim": 8,
+  "codebook_loss_weight": 1.0,
+  "codebook_size": 1024,
+  "commitment_loss_weight": 0.25,
+  "decoder_hidden_size": 1536,
+  "downsampling_ratios": [
+    2,
+    4,
+    8,
+    8
+  ],
+  "encoder_hidden_size": 64,
+  "hidden_size": 1024,
+  "hop_length": 512,
+  "model_type": "dac",
+  "n_codebooks": 9,
+  "quantizer_dropout": 0.0,
+  "sampling_rate": 44100,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "upsampling_ratios": [
+    8,
+    8,
+    4,
+    2
+  ]
+}
+
+Config of the decoder: <class 'parler_tts.modeling_parler_tts.ParlerTTSForCausalLM'> is overwritten by shared decoder 
+config: ParlerTTSDecoderConfig {
+  "_name_or_path": "/fsx/yoach/tmp/artefacts/parler-tts-mini-v2-empty/decoder",
+  "activation_dropout": 0.0,
+  "activation_function": "gelu",
+  "add_cross_attention": true,
+  "architectures": [
+    "ParlerTTSForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 1025,
+  "codebook_weights": null,
+  "cross_attention_implementation_strategy": null,
+  "delay_strategy": "delay",
+  "dropout": 0.1,
+  "eos_token_id": 1024,
+  "ffn_dim": 4096,
+  "hidden_size": 1024,
+  "initializer_factor": 0.02,
+  "is_decoder": true,
+  "layerdrop": 0.0,
+  "max_position_embeddings": 4096,
+  "model_type": "parler_tts_decoder",
+  "num_attention_heads": 16,
+  "num_codebooks": 9,
+  "num_cross_attention_key_value_heads": 16,
+  "num_hidden_layers": 24,
+  "num_key_value_heads": 16,
+  "pad_token_id": 1024,
+  "rope_embeddings": false,
+  "rope_theta": 10000.0,
+  "scale_embedding": false,
+  "tie_word_embeddings": false,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "use_fused_lm_heads": true,
+  "vocab_size": 1088
+}
+
+The attention mask is not set and cannot be inferred from input because pad token is same as eos token. As a 
+consequence, you may observe unexpected behavior. Please pass your input's `attention_mask` to obtain reliable results.
+Config of the text_encoder: <class 'transformers.models.t5.modeling_t5.T5EncoderModel'> is overwritten by shared 
+text_encoder config: T5Config {
+  "_name_or_path": "google/flan-t5-large",
+  "architectures": [
+    "T5ForConditionalGeneration"
+  ],
+  "classifier_dropout": 0.0,
+  "d_ff": 2816,
+  "d_kv": 64,
+  "d_model": 1024,
+  "decoder_start_token_id": 0,
+  "dense_act_fn": "gelu_new",
+  "dropout_rate": 0.1,
+  "eos_token_id": 1,
+  "feed_forward_proj": "gated-gelu",
+  "initializer_factor": 1.0,
+  "is_encoder_decoder": true,
+  "is_gated_act": true,
+  "layer_norm_epsilon": 1e-06,
+  "model_type": "t5",
+  "n_positions": 512,
+  "num_decoder_layers": 24,
+  "num_heads": 16,
+  "num_layers": 24,
+  "output_past": true,
+  "pad_token_id": 0,
+  "relative_attention_max_distance": 128,
+  "relative_attention_num_buckets": 32,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "vocab_size": 32128
+}
+
+Config of the audio_encoder: <class 'transformers.models.dac.modeling_dac.DacModel'> is overwritten by shared 
+audio_encoder config: DacConfig {
+  "_name_or_path": "ylacombe/dac_44khz",
+  "architectures": [
+    "DacModel"
+  ],
+  "codebook_dim": 8,
+  "codebook_loss_weight": 1.0,
+  "codebook_size": 1024,
+  "commitment_loss_weight": 0.25,
+  "decoder_hidden_size": 1536,
+  "downsampling_ratios": [
+    2,
+    4,
+    8,
+    8
+  ],
+  "encoder_hidden_size": 64,
+  "hidden_size": 1024,
+  "hop_length": 512,
+  "model_type": "dac",
+  "n_codebooks": 9,
+  "quantizer_dropout": 0.0,
+  "sampling_rate": 44100,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "upsampling_ratios": [
+    8,
+    8,
+    4,
+    2
+  ]
+}
+
+Config of the decoder: <class 'parler_tts.modeling_parler_tts.ParlerTTSForCausalLM'> is overwritten by shared decoder 
+config: ParlerTTSDecoderConfig {
+  "_name_or_path": "/fsx/yoach/tmp/artefacts/parler-tts-mini-v2-empty/decoder",
+  "activation_dropout": 0.0,
+  "activation_function": "gelu",
+  "add_cross_attention": true,
+  "architectures": [
+    "ParlerTTSForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 1025,
+  "codebook_weights": null,
+  "cross_attention_implementation_strategy": null,
+  "delay_strategy": "delay",
+  "dropout": 0.1,
+  "eos_token_id": 1024,
+  "ffn_dim": 4096,
+  "hidden_size": 1024,
+  "initializer_factor": 0.02,
+  "is_decoder": true,
+  "layerdrop": 0.0,
+  "max_position_embeddings": 4096,
+  "model_type": "parler_tts_decoder",
+  "num_attention_heads": 16,
+  "num_codebooks": 9,
+  "num_cross_attention_key_value_heads": 16,
+  "num_hidden_layers": 24,
+  "num_key_value_heads": 16,
+  "pad_token_id": 1024,
+  "rope_embeddings": false,
+  "rope_theta": 10000.0,
+  "scale_embedding": false,
+  "tie_word_embeddings": false,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "use_fused_lm_heads": true,
+  "vocab_size": 1088
+}
+
+Config of the text_encoder: <class 'transformers.models.t5.modeling_t5.T5EncoderModel'> is overwritten by shared 
+text_encoder config: T5Config {
+  "_name_or_path": "google/flan-t5-large",
+  "architectures": [
+    "T5ForConditionalGeneration"
+  ],
+  "classifier_dropout": 0.0,
+  "d_ff": 2816,
+  "d_kv": 64,
+  "d_model": 1024,
+  "decoder_start_token_id": 0,
+  "dense_act_fn": "gelu_new",
+  "dropout_rate": 0.1,
+  "eos_token_id": 1,
+  "feed_forward_proj": "gated-gelu",
+  "initializer_factor": 1.0,
+  "is_encoder_decoder": true,
+  "is_gated_act": true,
+  "layer_norm_epsilon": 1e-06,
+  "model_type": "t5",
+  "n_positions": 512,
+  "num_decoder_layers": 24,
+  "num_heads": 16,
+  "num_layers": 24,
+  "output_past": true,
+  "pad_token_id": 0,
+  "relative_attention_max_distance": 128,
+  "relative_attention_num_buckets": 32,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "vocab_size": 32128
+}
+
+Config of the audio_encoder: <class 'transformers.models.dac.modeling_dac.DacModel'> is overwritten by shared 
+audio_encoder config: DacConfig {
+  "_name_or_path": "ylacombe/dac_44khz",
+  "architectures": [
+    "DacModel"
+  ],
+  "codebook_dim": 8,
+  "codebook_loss_weight": 1.0,
+  "codebook_size": 1024,
+  "commitment_loss_weight": 0.25,
+  "decoder_hidden_size": 1536,
+  "downsampling_ratios": [
+    2,
+    4,
+    8,
+    8
+  ],
+  "encoder_hidden_size": 64,
+  "hidden_size": 1024,
+  "hop_length": 512,
+  "model_type": "dac",
+  "n_codebooks": 9,
+  "quantizer_dropout": 0.0,
+  "sampling_rate": 44100,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "upsampling_ratios": [
+    8,
+    8,
+    4,
+    2
+  ]
+}
+
+Config of the decoder: <class 'parler_tts.modeling_parler_tts.ParlerTTSForCausalLM'> is overwritten by shared decoder 
+config: ParlerTTSDecoderConfig {
+  "_name_or_path": "/fsx/yoach/tmp/artefacts/parler-tts-mini-v2-empty/decoder",
+  "activation_dropout": 0.0,
+  "activation_function": "gelu",
+  "add_cross_attention": true,
+  "architectures": [
+    "ParlerTTSForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 1025,
+  "codebook_weights": null,
+  "cross_attention_implementation_strategy": null,
+  "delay_strategy": "delay",
+  "dropout": 0.1,
+  "eos_token_id": 1024,
+  "ffn_dim": 4096,
+  "hidden_size": 1024,
+  "initializer_factor": 0.02,
+  "is_decoder": true,
+  "layerdrop": 0.0,
+  "max_position_embeddings": 4096,
+  "model_type": "parler_tts_decoder",
+  "num_attention_heads": 16,
+  "num_codebooks": 9,
+  "num_cross_attention_key_value_heads": 16,
+  "num_hidden_layers": 24,
+  "num_key_value_heads": 16,
+  "pad_token_id": 1024,
+  "rope_embeddings": false,
+  "rope_theta": 10000.0,
+  "scale_embedding": false,
+  "tie_word_embeddings": false,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "use_fused_lm_heads": true,
+  "vocab_size": 1088
+}
+
+Config of the text_encoder: <class 'transformers.models.t5.modeling_t5.T5EncoderModel'> is overwritten by shared 
+text_encoder config: T5Config {
+  "_name_or_path": "google/flan-t5-large",
+  "architectures": [
+    "T5ForConditionalGeneration"
+  ],
+  "classifier_dropout": 0.0,
+  "d_ff": 2816,
+  "d_kv": 64,
+  "d_model": 1024,
+  "decoder_start_token_id": 0,
+  "dense_act_fn": "gelu_new",
+  "dropout_rate": 0.1,
+  "eos_token_id": 1,
+  "feed_forward_proj": "gated-gelu",
+  "initializer_factor": 1.0,
+  "is_encoder_decoder": true,
+  "is_gated_act": true,
+  "layer_norm_epsilon": 1e-06,
+  "model_type": "t5",
+  "n_positions": 512,
+  "num_decoder_layers": 24,
+  "num_heads": 16,
+  "num_layers": 24,
+  "output_past": true,
+  "pad_token_id": 0,
+  "relative_attention_max_distance": 128,
+  "relative_attention_num_buckets": 32,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "vocab_size": 32128
+}
+
+Config of the audio_encoder: <class 'transformers.models.dac.modeling_dac.DacModel'> is overwritten by shared 
+audio_encoder config: DacConfig {
+  "_name_or_path": "ylacombe/dac_44khz",
+  "architectures": [
+    "DacModel"
+  ],
+  "codebook_dim": 8,
+  "codebook_loss_weight": 1.0,
+  "codebook_size": 1024,
+  "commitment_loss_weight": 0.25,
+  "decoder_hidden_size": 1536,
+  "downsampling_ratios": [
+    2,
+    4,
+    8,
+    8
+  ],
+  "encoder_hidden_size": 64,
+  "hidden_size": 1024,
+  "hop_length": 512,
+  "model_type": "dac",
+  "n_codebooks": 9,
+  "quantizer_dropout": 0.0,
+  "sampling_rate": 44100,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "upsampling_ratios": [
+    8,
+    8,
+    4,
+    2
+  ]
+}
+
+Config of the decoder: <class 'parler_tts.modeling_parler_tts.ParlerTTSForCausalLM'> is overwritten by shared decoder 
+config: ParlerTTSDecoderConfig {
+  "_name_or_path": "/fsx/yoach/tmp/artefacts/parler-tts-mini-v2-empty/decoder",
+  "activation_dropout": 0.0,
+  "activation_function": "gelu",
+  "add_cross_attention": true,
+  "architectures": [
+    "ParlerTTSForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 1025,
+  "codebook_weights": null,
+  "cross_attention_implementation_strategy": null,
+  "delay_strategy": "delay",
+  "dropout": 0.1,
+  "eos_token_id": 1024,
+  "ffn_dim": 4096,
+  "hidden_size": 1024,
+  "initializer_factor": 0.02,
+  "is_decoder": true,
+  "layerdrop": 0.0,
+  "max_position_embeddings": 4096,
+  "model_type": "parler_tts_decoder",
+  "num_attention_heads": 16,
+  "num_codebooks": 9,
+  "num_cross_attention_key_value_heads": 16,
+  "num_hidden_layers": 24,
+  "num_key_value_heads": 16,
+  "pad_token_id": 1024,
+  "rope_embeddings": false,
+  "rope_theta": 10000.0,
+  "scale_embedding": false,
+  "tie_word_embeddings": false,
+  "torch_dtype": "float32",
+  "transformers_version": "4.46.1",
+  "use_cache": true,
+  "use_fused_lm_heads": true,
+  "vocab_size": 1088
+}
+
+================================================================================
+PHASE 8 TTS GENERATION LENGTH & STREAMING BENCHMARKS
+================================================================================
+
+==========================================
+LOADING GPU MODEL: dtype=float16
+==========================================
+
+[Benchmarking en_5w (float16) - UNCONSTRAINED (max_new_tokens=2610)]
+  Steps: 503 | Limit: 2610 | Audio: 5.84s (Active: 5.84s) | Time: 33.45s | RTF: 5.73 | EOS: True | Torch Alloc: 2167.3 MiB | SMI: 2647.0 MiB
+
+[Benchmarking en_5w (float16) - CLAMPED (max_new_tokens=223 for ~2.6s)]
+  Steps: 107 | Limit: 223 | Audio: 1.24s (Active: 1.07s) | Time: 6.35s | RTF: 5.12 | EOS: True | Torch Alloc: 1896.6 MiB | SMI: 2185.0 MiB
+
+[Benchmarking hi_5w (float16) - UNCONSTRAINED (max_new_tokens=2610)]
+  Steps: 225 | Limit: 2610 | Audio: 2.61s (Active: 2.61s) | Time: 13.75s | RTF: 5.27 | EOS: True | Torch Alloc: 1976.0 MiB | SMI: 2333.0 MiB
+
+[Benchmarking hi_5w (float16) - CLAMPED (max_new_tokens=258 for ~3.0s)]
+  Steps: 175 | Limit: 258 | Audio: 2.03s (Active: 1.98s) | Time: 6.24s | RTF: 3.07 | EOS: True | Torch Alloc: 1942.0 MiB | SMI: 2269.0 MiB
+
+[Benchmarking en_14w (float16) - CLAMPED (max_new_tokens=499 for ~5.8s)]
+  Steps: 491 | Limit: 499 | Audio: 5.7s (Active: 5.7s) | Time: 15.08s | RTF: 2.65 | EOS: True | Torch Alloc: 2162.4 MiB | SMI: 2709.0 MiB
+
+[Benchmarking hi_14w (float16) - CLAMPED (max_new_tokens=602 for ~7.0s)]
+  Steps: 466 | Limit: 602 | Audio: 5.41s (Active: 5.27s) | Time: 14.33s | RTF: 2.65 | EOS: True | Torch Alloc: 2136.2 MiB | SMI: 2555.0 MiB
+
+------------------------------------------
+STREAMING BENCHMARKS (ParlerTTSStreamer)
+------------------------------------------
+play_steps=12 | en_5w | TTFC: 0.68s | Total: 5.71s | Audio: 1.08s | RTF: 5.28
+play_steps=12 | hi_5w | TTFC: 0.76s | Total: 10.47s | Audio: 2.11s | RTF: 4.96
+play_steps=16 | en_5w | TTFC: 0.85s | Total: 5.8s | Audio: 1.31s | RTF: 4.43
+play_steps=16 | hi_5w | TTFC: 1.0s | Total: 9.22s | Audio: 2.01s | RTF: 4.59
+play_steps=20 | en_5w | TTFC: 1.01s | Total: 6.52s | Audio: 1.47s | RTF: 4.44
+play_steps=20 | hi_5w | TTFC: 1.02s | Total: 10.29s | Audio: 2.25s | RTF: 4.57
+
+==========================================
+LOADING GPU MODEL: dtype=bfloat16
+==========================================
+
+[Benchmarking en_5w (bfloat16) - UNCONSTRAINED (max_new_tokens=2610)]
+  Steps: 189 | Limit: 2610 | Audio: 2.19s (Active: 2.0s) | Time: 7.94s | RTF: 3.62 | EOS: True | Torch Alloc: 1960.3 MiB | SMI: 2242.0 MiB
+
+[Benchmarking en_5w (bfloat16) - CLAMPED (max_new_tokens=223 for ~2.6s)]
+  Steps: 111 | Limit: 223 | Audio: 1.29s (Active: 1.25s) | Time: 3.8s | RTF: 2.94 | EOS: True | Torch Alloc: 1908.2 MiB | SMI: 2194.0 MiB
+
+[Benchmarking hi_5w (bfloat16) - UNCONSTRAINED (max_new_tokens=2610)]
+  Steps: 190 | Limit: 2610 | Audio: 2.21s (Active: 2.21s) | Time: 6.73s | RTF: 3.05 | EOS: True | Torch Alloc: 1960.9 MiB | SMI: 2246.0 MiB
+
+[Benchmarking hi_5w (bfloat16) - CLAMPED (max_new_tokens=258 for ~3.0s)]
+  Steps: 231 | Limit: 258 | Audio: 2.68s (Active: 2.12s) | Time: 7.66s | RTF: 2.86 | EOS: True | Torch Alloc: 1989.4 MiB | SMI: 2330.0 MiB
+
+[Benchmarking en_14w (bfloat16) - CLAMPED (max_new_tokens=499 for ~5.8s)]
+  Steps: 419 | Limit: 499 | Audio: 4.86s (Active: 4.86s) | Time: 13.28s | RTF: 2.73 | EOS: True | Torch Alloc: 2111.9 MiB | SMI: 2490.0 MiB
+
+[Benchmarking hi_14w (bfloat16) - CLAMPED (max_new_tokens=602 for ~7.0s)]
+  Steps: 441 | Limit: 602 | Audio: 5.12s (Active: 4.85s) | Time: 14.32s | RTF: 2.8 | EOS: True | Torch Alloc: 2127.8 MiB | SMI: 2580.0 MiB
+
+==========================================
+CPU BENCHMARK (float32)
+==========================================
+PyTorch CPU threads: 12
+CPU float32 (12 threads) | Steps: 113 | Time: 23.06s | Audio: 1.31s | RTF: 17.6
+
+--- PROFILING DAC DECODE VS DECODER AUTOREGRESSION (GPU fp16) ---
+DAC profiling check skipped (Given groups=1, weight of size [1536, 1024, 7], expected input[1, 1, 87552] to have 1024 channels, but got 1 channels instead)

@@ -197,7 +197,7 @@ Current System State:
 - All 144 automated tests pass (`pytest`).
 - llama-server is running on port 8080 (PID 29280).
 - Backend runs on port 8000, Frontend runs on port 5173.
-- Windows Smart App Control is permanently OFF.
+- SAC was turned off by the user on build 26200.9711; whether it can be re-enabled depends on the build; check Windows Security settings.
 
 Follow project rules:
 - Stage explicit git paths only.

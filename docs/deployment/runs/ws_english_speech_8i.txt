@@ -1,0 +1,84 @@
+2026-10-28 11:37:19,245 [INFO] Connecting to ws://127.0.0.1:8000/ws/speech...
+2026-10-28 11:37:19,389 [INFO] Sending start frame: {'type': 'start', 'sample_rate': 16000, 'encoding': 'pcm_s16le', 'language_hint': None}
+2026-10-28 11:37:19,452 [INFO] Streaming 263406 bytes (257 chunks of 1024 bytes)...
+2026-10-28 11:37:31,448 [INFO] Finished streaming audio frames. Sending stop frame...
+2026-10-28 11:37:31,448 [INFO] Waiting up to 30.0s for server processing and final turn to complete...
+2026-10-28 11:37:32,452 [INFO] Session complete.
+
+[SERVER EVENT: READY]
+{
+  "type": "ready"
+}
+
+[SERVER EVENT: VAD]
+{
+  "type": "vad",
+  "state": "speech_start"
+}
+
+[SERVER EVENT: VAD]
+{
+  "type": "vad",
+  "state": "speech_end"
+}
+
+[SERVER EVENT: SPEECH_RESULT]
+{
+  "type": "speech_result",
+  "transcript": "Vice sense, yeah.",
+  "language": "en",
+  "emotion": null,
+  "confidence": null,
+  "processing_time_ms": 627,
+  "model_version": "SenseVoiceSmall (funasr)",
+  "emotion_scores": null,
+  "audio_events": [
+    "Speech"
+  ],
+  "segments": [],
+  "debug": {
+    "raw_tags": [
+      "<|en|>",
+      "<|EMO_UNKNOWN|>",
+      "<|Speech|>",
+      "<|withitn|>"
+    ],
+    "raw_length": 59,
+    "vad_has_speech": true,
+    "routing": {
+      "language": "en",
+      "confidence": null,
+      "engine": "sensevoice",
+      "source": "default",
+      "debug": {
+        "policy": "default_fallback",
+        "default_engine": "sensevoice",
+        "default_language": "en"
+      }
+    },
+    "segment_index": 1,
+    "segment_bytes": 64512,
+    "segment_duration_s": 2.02,
+    "session_total_audio_bytes": 64512,
+    "flushed_on_stop": false
+  }
+}
+
+[SERVER EVENT: VAD]
+{
+  "type": "vad",
+  "state": "speech_start"
+}
+
+[SERVER EVENT: ERROR]
+{
+  "type": "error",
+  "code": "llm_unavailable",
+  "message": "LLM stream timed out after 30.0s: "
+}
+
+[SERVER EVENT: VAD]
+{
+  "type": "vad",
+  "state": "speech_end"
+}

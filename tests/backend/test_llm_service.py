@@ -13,6 +13,7 @@ from backend.app.services.llm_service import (
     LLMUnavailable,
     LLMTimeout,
     LLMResponseError,
+    LLMBadResponse,
     ThinkingFilter,
     strip_thinking_tags,
 )
@@ -278,3 +279,82 @@ async def test_llm_service_cancellation_aborts_stream():
         # Cancellation should not count as consecutive failure for cool-down
         assert service._consecutive_failures == 0
         assert service.is_in_cooldown() is False
+
+
+@pytest.mark.asyncio
+async def test_llm_service_peg_native_500_raises_llm_bad_response():
+    """
+    Item 2a test: Fault-inject HTTP 500 with exact peg-native format error body:
+    {"error":{"code":500,"message":"The model produced output that does not match the expected peg-native format","type":"server_error"}}
+    Verify it raises LLMBadResponse and counts toward cooldown failure threshold.
+    """
+    error_body = json.dumps({
+        "error": {
+            "code": 500,
+            "message": "The model produced output that does not match the expected peg-native format",
+            "type": "server_error"
+        }
+    })
+
+    async def peg_native_error_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text=error_body, headers={"content-type": "application/json"})
+
+    transport = httpx.MockTransport(peg_native_error_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        service = LLMService(base_url="http://127.0.0.1:8080", client=client)
+        service._failure_threshold = 2
+        service._cooldown_duration = 10.0
+
+        # Non-streaming check
+        with pytest.raises(LLMBadResponse) as exc_info:
+            await service.generate([{"role": "user", "content": "Hello"}], stream=False)
+        assert "peg-native" in str(exc_info.value)
+        assert service._consecutive_failures == 1
+        assert service.is_in_cooldown() is False
+
+        # Streaming check
+        with pytest.raises(LLMBadResponse) as exc_info_stream:
+            stream = await service.generate([{"role": "user", "content": "Hello"}], stream=True)
+            async for _ in stream:
+                pass
+        assert "peg-native" in str(exc_info_stream.value)
+        # Second failure trips cooldown
+        assert service._consecutive_failures == 2
+        assert service.is_in_cooldown() is True
+
+
+@pytest.mark.asyncio
+async def test_llm_service_sampling_parameters_passed_to_payload():
+    """
+    Item 2b test: Verify configured sampling parameters (repeat_penalty,
+    frequency_penalty, presence_penalty, max_tokens) are passed into HTTP request payload.
+    """
+    captured_payload = None
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_payload
+        captured_payload = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "Hello there."}}]
+        })
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        service = LLMService(base_url="http://127.0.0.1:8080", client=client)
+        await service.generate(
+            messages=[{"role": "user", "content": "Test"}],
+            stream=False,
+            max_tokens=120,
+            temperature=0.6,
+            repeat_penalty=1.15,
+            frequency_penalty=0.25,
+            presence_penalty=0.1,
+        )
+
+        assert captured_payload is not None
+        assert captured_payload["max_tokens"] == 120
+        assert captured_payload["temperature"] == 0.6
+        assert captured_payload["repeat_penalty"] == 1.15
+        assert captured_payload["frequency_penalty"] == 0.25
+        assert captured_payload["presence_penalty"] == 0.1
+

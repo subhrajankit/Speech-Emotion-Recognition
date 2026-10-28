@@ -96,7 +96,7 @@ The decision logic in `ai/routing/language_router.py` enforces a deterministic 3
   )
   ```
 - **Empirical Decoding Speed & Mode Selection (Controlled Fair Benchmark — Single Process, 1 Warm-up + 5 Timed Runs, CPU Execution)**:
-  - Evaluation Clip: `tests/samples/sample_hindi_speech.wav` (5.28s acoustic speech resampled to 16kHz; prompt spoken: "नमस्ते, आज मौसम बहुत अच्छा है।").
+  - Evaluation Clip: `tests/samples/sample_hindi_speech.wav` (5.28s authentic human acoustic speech resampled to 16kHz; prompt spoken confirmed by speaker: "आज मौसम बहुत अच्छा है।", speaker confirmed they DID NOT say "नमस्ते" at the start).
   - `ctc` (Connectionist Temporal Classification):
     - Warm-up: 1,987.4 ms
     - 5 Timed Runs: min = **966.4 ms**, median = **1,198.1 ms** (RTF 0.23), max = **1,321.9 ms**
@@ -111,11 +111,12 @@ The decision logic in `ai/routing/language_router.py` enforces a deterministic 3
     - CTC is ~2.3x faster than RNNT (median 1.20s vs 2.76s) because CTC performs a non-autoregressive parallel forward pass over acoustic frames, whereas RNNT evaluates its prediction and joint network sequentially in an autoregressive transducer loop.
     - Earlier reports suggesting CTC was 4x slower were confounded by cold model weight loading and thread-throttling in un-warmed benchmark scripts.
     - **Decision**: `ctc` is configured as the default `INDICCONFORMER_DECODER_TYPE="ctc"` because it provides lowest CPU latency while producing the exact same transcript.
-  - **Report-Only Experiment (Prepend 300ms Silence)**:
-    - Prepending 300ms of digital silence to `sample_hindi_speech.wav` resulted in:
-      - `rnnt`: `"आज मौसम बहुत अच्छा है"` ('नमस्ते' recovered: False, latency: 1,876.9 ms)
-      - `ctc`: `"आज मौसम बहुत अच्छा है"` ('नमस्ते' recovered: False, latency: 1,697.6 ms)
-    - Neither mode recovered the leading "नमस्ते", indicating the missing leading token in this specific recording is due to acoustic clipping/onset truncation in the original recording rather than VAD pre-roll cutoff.
+  - **Speech Onset & Greeting Verification Facts**:
+    - The speaker confirmed they **DID NOT** say "नमस्ते" at the start of `tests/samples/sample_hindi_speech.wav`.
+    - The VAD segmenter did not cut speech (speech onset ~1.18 s, segment starts ~0.96 s).
+    - Bypassing the engine's internal VAD did not recover it.
+    - Prepending 300ms digital silence resulted in: `rnnt`: `"आज मौसम बहुत अच्छा है"` ('नमस्ते' recovered: False), `ctc`: `"आज मौसम बहुत अच्छा है"` ('नमस्ते' recovered: False).
+    - Cause of any earlier discrepancy assumption: UNKNOWN. Single-clip observation, not an accuracy claim.
 
 ---
 

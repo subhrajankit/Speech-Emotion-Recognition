@@ -72,7 +72,11 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "http://127.0.0.1:8080"
     LLM_MODEL_NAME: str = "qwen3-1.7b"
     LLM_TIMEOUT_SECONDS: float = 30.0
-    LLM_MAX_TOKENS: int = 256
+    LLM_MAX_TOKENS: int = 120  # Suited for low-latency voice turns
+    LLM_TEMPERATURE: float = 0.7
+    LLM_REPEAT_PENALTY: float = 1.1  # Conservative repetition penalty
+    LLM_FREQUENCY_PENALTY: float = 0.2  # Conservative frequency penalty
+    LLM_PRESENCE_PENALTY: float = 0.0
     LLM_ENABLE_THINKING: bool = False
     LLM_HEALTH_CACHE_SECONDS: float = 5.0
     LLM_FAILURE_THRESHOLD: int = 3
