@@ -560,6 +560,18 @@
   - Provable architectural decoupling that prevents regression of the speech perception invariant.
   - Reproducible real-model verification script documented for local testing.
 
+## ADR 037: Phase 10b — Decoupled ASGI WebSocket Message Pump for Cold Model Load Keepalives
+- **Context**:
+  During cold model loads (e.g. IndicConformer-600m or SenseVoiceSmall initial loads taking 10s to 50s), uvicorn operates with default keepalive settings (`ws_ping_interval=20.0`, `ws_ping_timeout=20.0`). When client audio streaming finishes and the endpoint awaits transcription off-loop in a worker thread (`asyncio.to_thread`), `websocket.receive()` was not being continuously polled. In uvicorn's `WebSocketsSansIOProtocol`, unconsumed ASGI receive messages sitting in `self.queue` trigger `self.transport.pause_reading()`, which suspends transport-level socket reads. When uvicorn sends a 20s keepalive PING and the client immediately replies with a TCP PONG, uvicorn cannot read the PONG because socket reading is paused, causing a false `keepalive_timeout()` disconnect at 40s (code 1011).
+- **Decision**:
+  1. **Decoupled ASGI Message Pump**: Implemented a concurrent background reader task (`_message_pump`) in `backend/app/websocket/speech_socket.py` that continuously consumes `websocket.receive()` into an internal `asyncio.Queue`. This guarantees that uvicorn's ASGI queue is continuously drained, preventing `pause_reading()` from ever suspending socket transport reads during heavy synchronous CPU worker thread tasks.
+  2. **Application-Level Ping/Pong Support**: The message pump intercepts application `{"type":"ping"}` control frames and immediately responds with `{"type":"pong"}` while downstream model loading or inference is in progress.
+  3. **Verification under Default Uvicorn Settings**: Removed all custom ping CLI arguments (`--ws-ping-interval 120 --ws-ping-timeout 120`) from `scripts/e2e_real.py`, verifying cold real-model Hindi and English turns survive and complete under default uvicorn settings.
+  4. **Automated Double Keepalive Test**: Authored `test_websocket_slow_loading_engine_answers_pings_and_delivers_status_events` in `tests/backend/test_websocket.py` using a worker-thread-blocking `SlowLoadingFakeEngine` to verify pings are answered immediately and status events arrive in order without dropped connections.
+- **Consequences**:
+  - Live WebSocket audio turns survive arbitrarily long cold model initialization without dropped connections or custom uvicorn ping flags.
+  - Zero event loop stalls (`< 0.23s` max loop latency measured during 49s model load).
+
 
 
 

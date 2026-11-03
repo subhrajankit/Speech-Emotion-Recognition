@@ -1,11 +1,11 @@
-[2026-11-03 16:29:45] ================================================================================
-[2026-11-03 16:29:45] VOICESENSE AI — MANUAL REAL-MODEL E2E RUN (scripts/e2e_real.py)
-[2026-11-03 16:29:45] ================================================================================
-[2026-11-03 16:29:45] [1/5] Starting backend server subprocess from HEAD...
-[2026-11-03 16:29:45] Backend process spawned. PID: 1792 (logging to docs\deployment\runs\server_e2e_real.log)
-[2026-11-03 16:29:45] [2/5] Waiting for server to become healthy at http://127.0.0.1:8000/api/health...
-[2026-11-03 16:30:02] Server reported healthy: status=ok
-[2026-11-03 16:30:02] Health Response:
+[2026-11-03 23:03:34] ================================================================================
+[2026-11-03 23:03:34] VOICESENSE AI — MANUAL REAL-MODEL E2E RUN (scripts/e2e_real.py)
+[2026-11-03 23:03:34] ================================================================================
+[2026-11-03 23:03:34] [1/5] Starting backend server subprocess from HEAD...
+[2026-11-03 23:03:34] Backend process spawned. PID: 13288 (logging to docs\deployment\runs\server_e2e_real.log)
+[2026-11-03 23:03:34] [2/5] Waiting for server to become healthy at http://127.0.0.1:8000/api/health...
+[2026-11-03 23:03:49] Server reported healthy: status=ok
+[2026-11-03 23:03:50] Health Response:
 {
   "status": "ok",
   "components": {
@@ -49,49 +49,49 @@
     }
   }
 }
-[2026-11-03 16:30:02] 
+[2026-11-03 23:03:50] 
 [3/5] Executing Turn 1: Real Hindi Speech with language_hint='hi'
-[2026-11-03 16:30:02] 
+[2026-11-03 23:03:50] 
 --- Starting Hindi Turn (tests/samples/sample_hindi_speech.wav, hint=hi) ---
-[2026-11-03 16:30:02] Audio preprocessed: 84480 samples (5.28s), 168960 bytes
-[2026-11-03 16:30:02] Sent start frame: {'type': 'start', 'sample_rate': 16000, 'encoding': 'pcm_s16le', 'language_hint': 'hi'}
-[2026-11-03 16:30:02] Received event: ready
-[2026-11-03 16:30:05] Sent stop frame. Awaiting responses...
-[2026-11-03 16:30:05] Received event [vad]: {"type": "vad", "state": "speech_start"}
-[2026-11-03 16:30:05] Received event [vad]: {"type": "vad", "state": "speech_end"}
-[2026-11-03 16:30:05] Received event [status]: {"type": "status", "state": "loading_model", "engine": "indicconformer"}
-[2026-11-03 16:30:17] Received event [status]: {"type": "status", "state": "model_ready", "engine": "indicconformer"}
-[2026-11-03 16:30:32] Received event [speech_result]: {"type": "speech_result", "transcript": "आज मौसम बहुत अच्छा है", "language": "hi", "emotion": null, "confidence": null, "processing_time_ms": 15492, "model_version": "IndicConformer-600m (indic-conformer-600m-multilingual)", "emotion_scores": null, "audio_events": [], "segments": [], "debug": {"status": "success", "vad_has_speech": true, "decoder_type": "ctc", "language_id": "hi", "routing": {"language": "hi", "confidence": 1.0, "engine": "indicconformer", "source": "hint", "debug": {"policy": "explicit_hint_indic", "raw_hint": "hi"}}, "segment_index": 1, "segment_bytes": 138240, "segment_duration_s": 4.32, "session_total_audio_bytes": 168960, "flushed_on_stop": false}}
-[2026-11-03 16:30:36] Received event [error]: {"type": "error", "code": "llm_unavailable", "message": "LLM stream timed out after 30.0s: "}
-[2026-11-03 16:30:36] Total events received: 7, TTS binary chunks: 0 (0 bytes)
-[2026-11-03 16:30:36] Hindi Transcript: आज मौसम बहुत अच्छा है
-[2026-11-03 16:30:36] Hindi Language: hi
-[2026-11-03 16:30:36] Hindi Emotion (Invariant: None): None
-[2026-11-03 16:30:36] 
+[2026-11-03 23:03:50] Audio preprocessed: 84480 samples (5.28s), 168960 bytes
+[2026-11-03 23:03:50] Sent start frame: {'type': 'start', 'sample_rate': 16000, 'encoding': 'pcm_s16le', 'language_hint': 'hi'}
+[2026-11-03 23:03:50] Received event: ready
+[2026-11-03 23:03:52] Sent stop frame. Awaiting responses...
+[2026-11-03 23:03:52] Received event [vad]: {"type": "vad", "state": "speech_start"}
+[2026-11-03 23:03:52] Received event [vad]: {"type": "vad", "state": "speech_end"}
+[2026-11-03 23:03:52] Received event [status]: {"type": "status", "state": "loading_model", "engine": "indicconformer"}
+[2026-11-03 23:04:03] Received event [status]: {"type": "status", "state": "model_ready", "engine": "indicconformer"}
+[2026-11-03 23:04:19] Received event [speech_result]: {"type": "speech_result", "transcript": "आज मौसम बहुत अच्छा है", "language": "hi", "emotion": null, "confidence": null, "processing_time_ms": 15917, "model_version": "IndicConformer-600m (indic-conformer-600m-multilingual)", "emotion_scores": null, "audio_events": [], "segments": [], "debug": {"status": "success", "vad_has_speech": true, "decoder_type": "ctc", "language_id": "hi", "routing": {"language": "hi", "confidence": 1.0, "engine": "indicconformer", "source": "hint", "debug": {"policy": "explicit_hint_indic", "raw_hint": "hi"}}, "segment_index": 1, "segment_bytes": 138240, "segment_duration_s": 4.32, "session_total_audio_bytes": 168960, "flushed_on_stop": false}}
+[2026-11-03 23:04:22] Received event [error]: {"type": "error", "code": "llm_unavailable", "message": "LLM stream timed out after 30.0s: "}
+[2026-11-03 23:04:23] Total events received: 7, TTS binary chunks: 0 (0 bytes)
+[2026-11-03 23:04:23] Hindi Transcript: आज मौसम बहुत अच्छा है
+[2026-11-03 23:04:23] Hindi Language: hi
+[2026-11-03 23:04:23] Hindi Emotion (Invariant: None): None
+[2026-11-03 23:04:23] 
 [4/5] Executing Turn 2: Real English Speech with language_hint='en'
-[2026-11-03 16:30:36] 
+[2026-11-03 23:04:23] 
 --- Starting English Turn (tests/samples/english_speech_16k.wav, hint=en) ---
-[2026-11-03 16:30:36] Audio preprocessed: 131703 samples (8.23s), 263406 bytes
-[2026-11-03 16:30:36] Sent start frame: {'type': 'start', 'sample_rate': 16000, 'encoding': 'pcm_s16le', 'language_hint': 'en'}
-[2026-11-03 16:30:36] Received event: ready
-[2026-11-03 16:30:40] Sent stop frame. Awaiting responses...
-[2026-11-03 16:30:40] Received event [vad]: {"type": "vad", "state": "speech_start"}
-[2026-11-03 16:30:40] Received event [vad]: {"type": "vad", "state": "speech_end"}
-[2026-11-03 16:30:40] Received event [status]: {"type": "status", "state": "loading_model", "engine": "sensevoice"}
-[2026-11-03 16:30:51] Received event [status]: {"type": "status", "state": "model_ready", "engine": "sensevoice"}
-[2026-11-03 16:30:53] Received event [speech_result]: {"type": "speech_result", "transcript": "Vice sense, yeah.", "language": "en", "emotion": null, "confidence": null, "processing_time_ms": 2186, "model_version": "SenseVoiceSmall (funasr)", "emotion_scores": null, "audio_events": ["Speech"], "segments": [], "debug": {"raw_tags": ["<|en|>", "<|EMO_UNKNOWN|>", "<|Speech|>", "<|withitn|>"], "raw_length": 59, "vad_has_speech": true, "routing": {"language": "en", "confidence": 1.0, "engine": "sensevoice", "source": "hint", "debug": {"policy": "explicit_hint_sensevoice", "raw_hint": "en"}}, "segment_index": 1, "segment_bytes": 63488, "segment_duration_s": 1.98, "session_total_audio_bytes": 63488, "flushed_on_stop": false}}
-[2026-11-03 16:30:53] Received event [vad]: {"type": "vad", "state": "speech_start"}
-[2026-11-03 16:30:53] Received event [vad]: {"type": "vad", "state": "speech_end"}
-[2026-11-03 16:30:54] Received event [speech_result]: {"type": "speech_result", "transcript": "Provides multilingual and emotion or air voice S across 23 in languages.", "language": "en", "emotion": "neutral", "confidence": null, "processing_time_ms": 729, "model_version": "SenseVoiceSmall (funasr)", "emotion_scores": null, "audio_events": ["Speech"], "segments": [], "debug": {"raw_tags": ["<|en|>", "<|NEUTRAL|>", "<|Speech|>", "<|withitn|>"], "raw_length": 110, "vad_has_speech": true, "routing": {"language": "en", "confidence": 1.0, "engine": "sensevoice", "source": "hint", "debug": {"policy": "explicit_hint_sensevoice", "raw_hint": "en"}}, "segment_index": 2, "segment_bytes": 190464, "segment_duration_s": 5.95, "session_total_audio_bytes": 263406, "flushed_on_stop": true}}
-[2026-11-03 16:30:54] Received event [rag_sources]: {"type": "rag_sources", "sources": [{"doc_name": "warranty_terms.txt", "chunk_id": "warranty_terms.txt:0", "score": 0.7741}, {"doc_name": "developer_guide.md", "chunk_id": "developer_guide.md:0", "score": 0.7676}, {"doc_name": "warranty_terms.txt", "chunk_id": "warranty_terms.txt:1", "score": 0.7638}]}
-[2026-11-03 16:30:57] Received event [error]: {"type": "error", "code": "llm_unavailable", "message": "LLM stream timed out after 30.0s: "}
-[2026-11-03 16:30:57] Total events received: 11, TTS binary chunks: 0 (0 bytes)
-[2026-11-03 16:30:57] English Transcript: Vice sense, yeah.
-[2026-11-03 16:30:57] English Language: en
-[2026-11-03 16:30:57] English Emotion: None
-[2026-11-03 16:30:57] 
+[2026-11-03 23:04:23] Audio preprocessed: 131703 samples (8.23s), 263406 bytes
+[2026-11-03 23:04:23] Sent start frame: {'type': 'start', 'sample_rate': 16000, 'encoding': 'pcm_s16le', 'language_hint': 'en'}
+[2026-11-03 23:04:23] Received event: ready
+[2026-11-03 23:04:27] Sent stop frame. Awaiting responses...
+[2026-11-03 23:04:27] Received event [vad]: {"type": "vad", "state": "speech_start"}
+[2026-11-03 23:04:27] Received event [vad]: {"type": "vad", "state": "speech_end"}
+[2026-11-03 23:04:27] Received event [status]: {"type": "status", "state": "loading_model", "engine": "sensevoice"}
+[2026-11-03 23:04:35] Received event [status]: {"type": "status", "state": "model_ready", "engine": "sensevoice"}
+[2026-11-03 23:04:35] Received event [speech_result]: {"type": "speech_result", "transcript": "Vice sense, yeah.", "language": "en", "emotion": null, "confidence": null, "processing_time_ms": 557, "model_version": "SenseVoiceSmall (funasr)", "emotion_scores": null, "audio_events": ["Speech"], "segments": [], "debug": {"raw_tags": ["<|en|>", "<|EMO_UNKNOWN|>", "<|Speech|>", "<|withitn|>"], "raw_length": 59, "vad_has_speech": true, "routing": {"language": "en", "confidence": 1.0, "engine": "sensevoice", "source": "hint", "debug": {"policy": "explicit_hint_sensevoice", "raw_hint": "en"}}, "segment_index": 1, "segment_bytes": 63488, "segment_duration_s": 1.98, "session_total_audio_bytes": 63488, "flushed_on_stop": false}}
+[2026-11-03 23:04:35] Received event [vad]: {"type": "vad", "state": "speech_start"}
+[2026-11-03 23:04:35] Received event [vad]: {"type": "vad", "state": "speech_end"}
+[2026-11-03 23:04:36] Received event [speech_result]: {"type": "speech_result", "transcript": "Provides multilingual and emotion or air voice S across 23 in languages.", "language": "en", "emotion": "neutral", "confidence": null, "processing_time_ms": 740, "model_version": "SenseVoiceSmall (funasr)", "emotion_scores": null, "audio_events": ["Speech"], "segments": [], "debug": {"raw_tags": ["<|en|>", "<|NEUTRAL|>", "<|Speech|>", "<|withitn|>"], "raw_length": 110, "vad_has_speech": true, "routing": {"language": "en", "confidence": 1.0, "engine": "sensevoice", "source": "hint", "debug": {"policy": "explicit_hint_sensevoice", "raw_hint": "en"}}, "segment_index": 2, "segment_bytes": 190464, "segment_duration_s": 5.95, "session_total_audio_bytes": 263406, "flushed_on_stop": true}}
+[2026-11-03 23:04:36] Received event [rag_sources]: {"type": "rag_sources", "sources": [{"doc_name": "warranty_terms.txt", "chunk_id": "warranty_terms.txt:0", "score": 0.7741}, {"doc_name": "developer_guide.md", "chunk_id": "developer_guide.md:0", "score": 0.7676}, {"doc_name": "warranty_terms.txt", "chunk_id": "warranty_terms.txt:1", "score": 0.7638}]}
+[2026-11-03 23:04:38] Received event [error]: {"type": "error", "code": "llm_unavailable", "message": "LLM stream timed out after 30.0s: "}
+[2026-11-03 23:04:39] Total events received: 11, TTS binary chunks: 0 (0 bytes)
+[2026-11-03 23:04:39] English Transcript: Vice sense, yeah.
+[2026-11-03 23:04:39] English Language: en
+[2026-11-03 23:04:39] English Emotion: None
+[2026-11-03 23:04:39] 
 [5/5] Real-model verification completed successfully!
-[2026-11-03 16:30:57] Untrimmed run log saved to: D:\Capstone Project\NewSenseVoice\docs\deployment\runs\run_phase10_e2e_real.txt
-[2026-11-03 16:30:57] 
-Shutting down backend process (PID: 1792)...
-[2026-11-03 16:30:57] Backend process exited cleanly.
+[2026-11-03 23:04:39] Untrimmed run log saved to: D:\Capstone Project\NewSenseVoice\docs\deployment\runs\run_phase10_e2e_real.txt
+[2026-11-03 23:04:39] 
+Shutting down backend process (PID: 13288)...
+[2026-11-03 23:04:39] Backend process exited cleanly.

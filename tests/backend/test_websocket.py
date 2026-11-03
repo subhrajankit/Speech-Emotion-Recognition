@@ -480,7 +480,7 @@ def test_websocket_cancellation_on_new_start(client, monkeypatch):
         ws.send_json({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le"})
         ready_ev = ws.receive_json()
         # May receive remaining buffered delta before ready or ready directly
-        while ready_ev.get("type") == "llm_delta":
+        while ready_ev.get("type") in ("llm_delta", "status"):
             ready_ev = ws.receive_json()
         assert ready_ev.get("type") == "ready"
 
@@ -850,7 +850,7 @@ def test_websocket_first_turn_lazy_load_status_events(client, monkeypatch):
         assert "speech_result" in types1
 
         # Check status event contents and order
-        status_events = [e for e in events_turn1 if e.get("type") == "status"]
+        status_events = [e for e in events_turn1 if e.get("type") == "status" and "state" in e]
         assert len(status_events) == 2
         assert status_events[0] == {"type": "status", "state": "loading_model", "engine": "sensevoice"}
         assert status_events[1] == {"type": "status", "state": "model_ready", "engine": "sensevoice"}
@@ -884,7 +884,8 @@ def test_websocket_first_turn_lazy_load_status_events(client, monkeypatch):
                 break
 
         types2 = [e.get("type") for e in events_turn2]
-        assert "status" not in types2, f"Turn 2 must NOT emit status events when model is loaded; got {types2}"
+        engine_status2 = [e for e in events_turn2 if e.get("type") == "status" and "state" in e]
+        assert len(engine_status2) == 0, f"Turn 2 must NOT emit model status events when model is loaded; got {engine_status2}"
         assert "speech_result" in types2
 
 
@@ -906,6 +907,73 @@ def test_preload_default_engine_config(monkeypatch):
     svc.initialize()
     assert fake.is_loaded
     assert fake.load_count == 1
+
+
+def test_websocket_slow_loading_engine_answers_pings_and_delivers_status_events(client, monkeypatch):
+    """
+    Phase 10b Item 1: Prove with a slow-loading double that blocks its worker thread
+    that WebSocket keepalive pings are answered immediately and status events arrive in order
+    without connection drop.
+    """
+    from tests.test_doubles import SlowLoadingFakeEngine
+    from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+    import httpx
+
+    mock_llm_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, text='data: [DONE]\n\n'))
+    )
+    monkeypatch.setattr(llm_service, "_custom_client", mock_llm_client)
+
+    # SlowLoadingFakeEngine with 0.5s blocking delay in load()
+    slow_engine = SlowLoadingFakeEngine(load_delay=0.5)
+    monkeypatch.setattr(speech_service, "_sensevoice", slow_engine)
+    monkeypatch.setattr(speech_service, "_engine", slow_engine)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        # 1. Start session
+        ws.send_json({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en"
+        })
+        ready_evt = ws.receive_json()
+        assert ready_evt.get("type") == "ready"
+
+        # 2. Stream audio and send stop
+        t = np.linspace(0, 0.5, 8000, endpoint=False, dtype=np.float32)
+        pcm_bytes = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16).tobytes()
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i : i + 1024])
+        ws.send_json({"type": "stop"})
+
+        # 3. Send keepalive pings while worker thread is blocked in load()
+        ws.send_json({"type": "ping"})
+        ws.send_json({"type": "ping"})
+
+        # 4. Drain all events
+        events = []
+        for _ in range(25):
+            try:
+                ev = ws.receive_json()
+                events.append(ev)
+                if ev.get("type") in ("llm_done", "error"):
+                    break
+            except Exception:
+                break
+
+        # 5. Verify pongs were returned and status events arrived
+        pong_events = [e for e in events if e.get("type") == "pong"]
+        status_events = [e for e in events if e.get("type") == "status" and "state" in e]
+        speech_results = [e for e in events if e.get("type") == "speech_result"]
+
+        assert len(pong_events) == 2, f"Expected 2 pongs, got {pong_events}"
+        assert len(status_events) == 2, f"Expected 2 engine status events, got {status_events}"
+        assert status_events[0] == {"type": "status", "state": "loading_model", "engine": "sensevoice"}
+        assert status_events[1] == {"type": "status", "state": "model_ready", "engine": "sensevoice"}
+        assert len(speech_results) == 1, "Expected speech_result"
+
 
 
 

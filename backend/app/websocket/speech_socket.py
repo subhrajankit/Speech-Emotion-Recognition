@@ -284,9 +284,45 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     vad_segment_count = 0
     was_in_speech = False
 
+    incoming_queue: asyncio.Queue[Optional[Dict[str, Any]]] = asyncio.Queue()
+
+    async def _message_pump():
+        """
+        Continuously pumps incoming WebSocket messages into an in-memory queue.
+        This guarantees uvicorn's internal ASGI receive queue is drained immediately,
+        preventing uvicorn from pausing transport socket reads (pause_reading())
+        during worker-thread model loading or inference.
+        Also answers application-level keepalive pings immediately.
+        """
+        try:
+            while True:
+                msg = await websocket.receive()
+                # Fast-path immediate response for application-level ping frames
+                if "text" in msg and msg["text"]:
+                    try:
+                        peek_payload = json.loads(msg["text"])
+                        if peek_payload.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                            continue
+                    except Exception:
+                        pass
+                await incoming_queue.put(msg)
+                if msg.get("type") == "websocket.disconnect":
+                    break
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        except Exception as pump_err:
+            logger.debug(f"WebSocket receive pump terminated: {pump_err}")
+        finally:
+            await incoming_queue.put(None)
+
+    pump_task = asyncio.create_task(_message_pump())
+
     try:
         while True:
-            message = await websocket.receive()
+            message = await incoming_queue.get()
+            if message is None or message.get("type") == "websocket.disconnect":
+                break
 
             # Handle text JSON control messages
             if "text" in message and message["text"]:
@@ -302,7 +338,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
 
                 action = payload.get("type")
 
-                # Keepalive ping
+                # Keepalive ping (fallback if reached queue)
                 if action == "ping":
                     await websocket.send_json({"type": "pong"})
                     continue
@@ -585,5 +621,10 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Unexpected WebSocket error: {e}")
     finally:
+        pump_task.cancel()
+        try:
+            await pump_task
+        except (asyncio.CancelledError, Exception):
+            pass
         await cancel_active_llm()
         segmenter.reset()

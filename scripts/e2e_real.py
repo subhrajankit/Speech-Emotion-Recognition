@@ -96,7 +96,7 @@ async def run_turn(logger: OutputLogger, audio_path: str, lang_hint: str, label:
     binary_chunks_count = 0
     binary_bytes_total = 0
 
-    async with websockets.connect(WS_URL, ping_interval=120, ping_timeout=120) as ws:
+    async with websockets.connect(WS_URL) as ws:
         # 1. Send start
         start_frame = {
             "type": "start",
@@ -165,10 +165,6 @@ async def main():
         "127.0.0.1",
         "--port",
         "8000",
-        "--ws-ping-interval",
-        "120",
-        "--ws-ping-timeout",
-        "120",
     ]
     env = os.environ.copy()
     env["AUTH_REQUIRED"] = "false"

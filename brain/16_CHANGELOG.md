@@ -2,6 +2,30 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 10b] - Close the Gaps in Phase 10 (2026-11-03)
+- **WebSocket Keepalive & Decoupled Message Pump**:
+  - Resolved WebSocket keepalive disconnects during cold model loading (e.g., IndicConformer / SenseVoice initial 10s-50s loads) under default uvicorn keepalive settings (`ws_ping_interval=20.0`, `ws_ping_timeout=20.0`).
+  - Root cause diagnosed in uvicorn's `WebSocketsSansIOProtocol`: unconsumed messages in `self.queue` cause `self.transport.pause_reading()`, which suspends transport-level socket reads so client TCP PONGs cannot be received while worker threads run.
+  - Implemented decoupled background reader task (`_message_pump`) in `backend/app/websocket/speech_socket.py` that continuously consumes `websocket.receive()` into an `asyncio.Queue` and answers application pings immediately, keeping uvicorn's receive queue drained and transport reads active.
+  - Measured event-loop lag during 49s cold IndicConformer load: maximum stall was 225.9 ms (< 0.23s, 759 ticks), confirming the event loop was never blocked.
+  - Added regression test `test_websocket_slow_loading_engine_answers_pings_and_delivers_status_events` in `tests/backend/test_websocket.py` using a worker-thread-blocking `SlowLoadingFakeEngine` to verify pings are answered immediately and status events arrive in order without dropped connections.
+  - Verified live cold Hindi and English turns over `/ws/speech` with default uvicorn ping settings in `scripts/e2e_real.py`, saving untrimmed run log to `docs/deployment/runs/run_phase10_e2e_real.txt`.
+- **Clean CI-Lite Environment**:
+  - Rebuilt `.venv-ci` strictly from committed `requirements-ci.txt` with zero manual patches.
+  - Verified complete absence of `torch`, `funasr`, `nemo`, and `sentence-transformers` via `pip list`.
+  - Confirmed `.venv-ci` is git-ignored by `.gitignore` (`.gitignore:25:.venv*/`).
+  - Executed lite suite in `.venv-ci`: 162 passed, 11 deselected in 10.59s.
+- **Test Double Diff & RAG Gate Mutation Check**:
+  - Ran `git diff 9f3516e~1 9f3516e -- tests/test_doubles.py tests/backend/test_rag_service.py`: verified 0 assertions were removed or weakened.
+  - Performed mutation check on `rag/intent_router.py` (forcing `knowledge_query`): confirmed `test_chat_utterance_makes_zero_retrieval_calls` failed as expected, then cleanly restored file.
+- **RAG Non-Knowledge Utterance Diagnostic**:
+  - Diagnosed English utterance (*"Provides multilingual and emotion or air voice S across 23 in languages."*): Gate method was Tier 2 `embedding_similarity`, score was `0.8034` (threshold `0.8000`), matching knowledge exemplar `"Uploaded documents mein specification check karo."` (0.8034) over chat exemplar (0.8014).
+  - Retrieval threshold was `0.7000`; all 5 chunks scored `0.7363 - 0.7741`.
+  - Confirmed technical phrasing marginally exceeded Tier 2 exemplar cosine threshold by 0.0034.
+- **Status Wording & CI Verification**:
+  - Updated `docs/architecture/status.md` to explicitly state PostgreSQL is NOT verified (`test_postgres_compatibility.py` skipped: `DATABASE_URL_TEST` not set), and recorded "CI: syntax-validated, not executed".
+  - Verified all CI workflow steps locally (import isolation, lite tests, frontend tsc, lint, test, build).
+
 ## [Phase 10] - Testing and CI (2026-11-03)
 - **CI-Lite Test Suite (`requirements-ci.txt`)**:
   - Authored minimal `requirements-ci.txt` with zero heavy machine learning packages (no `torch`, `funasr`, `nemo`, or `sentence-transformers`).
