@@ -7,7 +7,9 @@ export type ComponentStatus =
   | 'degraded'
   | 'unhealthy'
   | 'not_configured'
-  | 'offline';
+  | 'offline'
+  | 'unavailable'
+  | 'disabled';
 
 export interface HealthComponents {
   asr: ComponentStatus;

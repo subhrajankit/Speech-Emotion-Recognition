@@ -91,4 +91,83 @@ describe('ConversationStore Logic', () => {
 
     expect(item.transcript).toBe('padded speech string');
   });
+
+  describe('Multi-Segment Turns & Assistant Reply Streaming', () => {
+    it('records each speech_result as an individual utterance row with segment_index', () => {
+      const seg1 = conversationStore.addSpeechResult({
+        transcript: 'First utterance segment',
+        language: 'hi',
+        emotion: 'happy',
+        confidence: null,
+        processing_time_ms: 80,
+        segmentIndex: 1,
+      });
+
+      const seg2 = conversationStore.addSpeechResult({
+        transcript: 'Second utterance segment',
+        language: 'hi',
+        emotion: 'neutral',
+        confidence: null,
+        processing_time_ms: 95,
+        segmentIndex: 2,
+      });
+
+      const items = conversationStore.getItems();
+      expect(items.length).toBe(2);
+      expect(items[0].id).toBe(seg2.id);
+      expect(items[0].segmentIndex).toBe(2);
+      expect(items[1].id).toBe(seg1.id);
+      expect(items[1].segmentIndex).toBe(1);
+    });
+
+    it('streams LLM tokens into the active turn via appendLlmDelta and completeLlmTurn', () => {
+      conversationStore.addSpeechResult({
+        transcript: 'Tell me a joke',
+        language: 'en',
+        emotion: 'happy',
+        confidence: 0.9,
+        processing_time_ms: 65,
+        segmentIndex: 1,
+      });
+
+      conversationStore.appendLlmDelta('Why did the chicken ');
+      conversationStore.appendLlmDelta('cross the road?');
+
+      let current = conversationStore.getItems()[0];
+      expect(current.assistantText).toBe('Why did the chicken cross the road?');
+      expect(current.isStreaming).toBe(true);
+
+      const citations = [{ doc_name: 'jokes.md', chunk_id: 'c1', score: 0.99 }];
+      conversationStore.completeLlmTurn('Why did the chicken cross the road? To get to the other side.', citations);
+
+      current = conversationStore.getItems()[0];
+      expect(current.assistantText).toBe('Why did the chicken cross the road? To get to the other side.');
+      expect(current.isStreaming).toBe(false);
+      expect(current.sources).toEqual(citations);
+    });
+
+    it('preserves user transcript and emotion when assistant encounters an error', () => {
+      const turn = conversationStore.addSpeechResult({
+        transcript: 'What is the refund policy?',
+        language: 'en',
+        emotion: 'sad',
+        confidence: null,
+        processing_time_ms: 72,
+        segmentIndex: 1,
+      });
+
+      // LLM fails
+      conversationStore.setAssistantError('llm_unavailable');
+
+      const updated = conversationStore.getItems()[0];
+      expect(updated.id).toBe(turn.id);
+      // User transcript and emotion remain fully intact
+      expect(updated.transcript).toBe('What is the refund policy?');
+      expect(updated.emotion).toBe('sad');
+      expect(updated.confidence).toBeNull();
+      // Assistant error recorded
+      expect(updated.assistantError).toBe('llm_unavailable');
+      expect(updated.isStreaming).toBe(false);
+    });
+  });
 });

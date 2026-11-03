@@ -1,7 +1,8 @@
 import React from 'react';
-import { Radio, Moon, Sun } from 'lucide-react';
+import { Radio, Moon, Sun, User as UserIcon, Lock } from 'lucide-react';
 import { WebSocketConnectionState } from '../../types/websocket';
 import { StatusDot } from '../ui/StatusDot';
+import { UserResponse } from '../../services/api';
 
 export interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -10,6 +11,8 @@ export interface DashboardLayoutProps {
   onToggleTheme: () => void;
   activeTab?: 'voice' | 'history';
   onSelectTab?: (tab: 'voice' | 'history') => void;
+  currentUser?: UserResponse | null;
+  onOpenAuth?: () => void;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
@@ -19,6 +22,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onToggleTheme,
   activeTab = 'voice',
   onSelectTab,
+  currentUser,
+  onOpenAuth,
 }) => {
   const getConnectionLabel = () => {
     switch (connectionState) {
@@ -89,6 +94,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           {/* Navigation Tabs */}
           {onSelectTab && (
             <div
+              role="tablist"
+              aria-label="Dashboard sections"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -101,6 +108,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             >
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === 'voice'}
                 onClick={() => onSelectTab('voice')}
                 style={{
                   padding: '0.35rem 0.85rem',
@@ -118,6 +127,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === 'history'}
                 onClick={() => onSelectTab('history')}
                 style={{
                   padding: '0.35rem 0.85rem',
@@ -136,8 +147,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </div>
           )}
 
-          {/* Connection Status & Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {/* Connection Status & User Account Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div
               style={{
                 display: 'flex',
@@ -155,6 +166,41 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <span>{getConnectionLabel()}</span>
             </div>
 
+            {/* Auth / Account Button */}
+            {onOpenAuth && (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                aria-label={currentUser ? `Account: ${currentUser.username}` : 'Sign in or register'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: 'var(--radius-full)',
+                  border: '1px solid var(--border-subtle)',
+                  backgroundColor: currentUser ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-surface-elevated)',
+                  color: currentUser ? 'var(--color-voice)' : 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {currentUser ? (
+                  <>
+                    <UserIcon size={14} />
+                    <span>{currentUser.username}</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock size={14} />
+                    <span>Sign In</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Dark / Light Toggle */}
             <button
               type="button"
               onClick={onToggleTheme}

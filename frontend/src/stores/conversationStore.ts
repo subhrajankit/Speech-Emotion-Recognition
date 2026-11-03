@@ -1,43 +1,145 @@
 /**
  * VoiceSense AI — Conversation History Store
- * In-memory store with observer pattern and a clear seam for Phase 9 backend sync.
+ * In-memory store supporting multi-segment utterance rows, streaming assistant replies,
+ * and isolated speech/LLM error handling.
  */
 
 import { useState, useEffect } from 'react';
 import { HistoryItem } from '../types/history';
-import { fetchRemoteHistory } from '../services/api';
 
-type Listener = (items: HistoryItem[]) => void;
+export interface UtteranceTurn extends HistoryItem {
+  assistantText?: string;
+  isStreaming?: boolean;
+  sources?: any[];
+  assistantError?: string | null;
+}
+
+type Listener = (items: UtteranceTurn[]) => void;
 
 class ConversationStore {
-  private items: HistoryItem[] = [];
+  private items: UtteranceTurn[] = [];
   private listeners: Set<Listener> = new Set();
   private maxItems = 100;
+  private activeTurnId: string | null = null;
 
-  public getItems(): HistoryItem[] {
+  public getItems(): UtteranceTurn[] {
     return [...this.items];
   }
 
-  public addItem(item: Omit<HistoryItem, 'id' | 'timestamp'> & { id?: string; timestamp?: number }): HistoryItem {
-    const newItem: HistoryItem = {
-      id: item.id || `turn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      timestamp: item.timestamp || Date.now(),
-      transcript: item.transcript.trim(),
+  public getActiveTurnId(): string | null {
+    return this.activeTurnId;
+  }
+
+  /**
+   * Adds an utterance row for a new speech segment.
+   * Requirement 2: each speech_result is its own utterance row (segment_index from debug when present).
+   */
+  public addSpeechResult(payload: {
+    transcript: string;
+    language: string;
+    emotion: string | null;
+    confidence: number | null;
+    processing_time_ms: number;
+    audioEvents?: string[];
+    segmentIndex?: number;
+    id?: string;
+  }): UtteranceTurn {
+    const turnId =
+      payload.id ||
+      `turn_${Date.now()}_seg${payload.segmentIndex ?? 1}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const newTurn: UtteranceTurn = {
+      id: turnId,
+      timestamp: Date.now(),
+      transcript: payload.transcript.trim(),
+      language: payload.language,
+      emotion: payload.emotion,
+      confidence: payload.confidence,
+      processing_time_ms: payload.processing_time_ms,
+      audioEvents: payload.audioEvents,
+      segmentIndex: payload.segmentIndex,
+      assistantText: '',
+      isStreaming: true,
+      sources: [],
+      assistantError: null,
+    };
+
+    this.activeTurnId = turnId;
+    this.items = [newTurn, ...this.items].slice(0, this.maxItems);
+    this.notify();
+    return newTurn;
+  }
+
+  /**
+   * Appends an incoming LLM token delta to the active turn.
+   */
+  public appendLlmDelta(delta: string, turnId?: string): void {
+    const targetId = turnId || this.activeTurnId;
+    if (!targetId) return;
+
+    const item = this.items.find((i) => i.id === targetId);
+    if (item) {
+      item.assistantText = (item.assistantText || '') + delta;
+      item.isStreaming = true;
+      this.notify();
+    }
+  }
+
+  /**
+   * Finalizes the LLM reply for the active turn.
+   */
+  public completeLlmTurn(text: string, sources?: any[], turnId?: string): void {
+    const targetId = turnId || this.activeTurnId;
+    if (!targetId) return;
+
+    const item = this.items.find((i) => i.id === targetId);
+    if (item) {
+      item.assistantText = text || item.assistantText || '';
+      item.isStreaming = false;
+      if (sources && sources.length > 0) {
+        item.sources = sources;
+      }
+      this.notify();
+    }
+  }
+
+  /**
+   * Sets assistant error on turn while leaving transcript & emotion intact.
+   * Requirement 4: Transcript and emotion must still render when the LLM or TTS fails.
+   */
+  public setAssistantError(errorMsg: string, turnId?: string): void {
+    const targetId = turnId || this.activeTurnId;
+    if (!targetId) return;
+
+    const item = this.items.find((i) => i.id === targetId);
+    if (item) {
+      item.assistantError = errorMsg;
+      item.isStreaming = false;
+      this.notify();
+    }
+  }
+
+  /**
+   * Backwards compatible addItem method.
+   */
+  public addItem(
+    item: Omit<HistoryItem, 'id' | 'timestamp'> & { id?: string; timestamp?: number }
+  ): UtteranceTurn {
+    return this.addSpeechResult({
+      transcript: item.transcript,
       language: item.language,
       emotion: item.emotion,
       confidence: item.confidence,
       processing_time_ms: item.processing_time_ms,
       audioEvents: item.audioEvents,
-    };
-
-    // Prepend new item (newest first)
-    this.items = [newItem, ...this.items].slice(0, this.maxItems);
-    this.notify();
-    return newItem;
+      id: item.id,
+      segmentIndex: item.segmentIndex,
+    });
   }
 
   public clear(): void {
     this.items = [];
+    this.activeTurnId = null;
     this.notify();
   }
 
@@ -47,17 +149,6 @@ class ConversationStore {
     return () => {
       this.listeners.delete(listener);
     };
-  }
-
-  /**
-   * Phase 9 Seam: Sync with /api/history when backend endpoint is available.
-   */
-  public async syncWithBackend(): Promise<void> {
-    const remote = await fetchRemoteHistory();
-    if (remote && Array.isArray(remote)) {
-      this.items = remote;
-      this.notify();
-    }
   }
 
   private notify(): void {
@@ -72,7 +163,7 @@ export const conversationStore = new ConversationStore();
  * React hook to bind components to conversationStore updates.
  */
 export function useConversationHistory() {
-  const [items, setItems] = useState<HistoryItem[]>(conversationStore.getItems());
+  const [items, setItems] = useState<UtteranceTurn[]>(conversationStore.getItems());
 
   useEffect(() => {
     return conversationStore.subscribe(setItems);
@@ -80,8 +171,16 @@ export function useConversationHistory() {
 
   return {
     items,
-    addItem: (item: Omit<HistoryItem, 'id' | 'timestamp'>) => conversationStore.addItem(item),
+    addSpeechResult: (payload: Parameters<ConversationStore['addSpeechResult']>[0]) =>
+      conversationStore.addSpeechResult(payload),
+    appendLlmDelta: (delta: string, turnId?: string) =>
+      conversationStore.appendLlmDelta(delta, turnId),
+    completeLlmTurn: (text: string, sources?: any[], turnId?: string) =>
+      conversationStore.completeLlmTurn(text, sources, turnId),
+    setAssistantError: (errorMsg: string, turnId?: string) =>
+      conversationStore.setAssistantError(errorMsg, turnId),
+    addItem: (item: Omit<HistoryItem, 'id' | 'timestamp'>) =>
+      conversationStore.addItem(item),
     clearHistory: () => conversationStore.clear(),
-    syncWithBackend: () => conversationStore.syncWithBackend(),
   };
 }

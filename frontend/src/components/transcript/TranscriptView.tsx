@@ -4,7 +4,7 @@ import { Badge } from '../ui/Badge';
 
 export interface TranscriptViewProps {
   transcript: string;
-  detectedLanguage?: string;
+  detectedLanguage?: string | null;
   latencyMs?: number;
   audioEvents?: string[];
   isListening?: boolean;
@@ -19,9 +19,14 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
   isListening = false,
   className = '',
 }) => {
+  const languageLabel =
+    detectedLanguage && detectedLanguage !== 'unknown' ? detectedLanguage.toUpperCase() : null;
+
   return (
     <div
       className={`panel ${className}`}
+      role="region"
+      aria-label="User speech transcript"
       style={{
         backgroundColor: 'var(--bg-surface)',
         border: '1px solid var(--border-subtle)',
@@ -37,10 +42,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
             User Speech
           </span>
-          {detectedLanguage && detectedLanguage !== 'unknown' && (
+          {languageLabel && (
             <Badge variant="accent" style={{ textTransform: 'uppercase' }}>
               <Globe size={11} style={{ marginRight: '3px' }} />
-              {detectedLanguage}
+              {languageLabel}
             </Badge>
           )}
         </div>
@@ -57,7 +62,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
             }}
           >
             <Clock size={12} />
-            <span>ASR: {latencyMs}ms</span>
+            <span>ASR: {Math.round(latencyMs)}ms</span>
           </div>
         )}
       </div>

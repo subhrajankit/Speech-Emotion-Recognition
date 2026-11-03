@@ -1,16 +1,22 @@
 /**
  * VoiceSense AI — Typed WebSocket Hook (Protocol v1)
- * Handles connect, reconnect with exponential backoff, typed protocol v1 framing,
- * and safe ignoring of reserved/unknown message types.
+ * Handles connection lifecycle, exponential backoff, in-frame authentication,
+ * language hints, and typed server event dispatch.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getWsUrl, isAuthRequired } from '../lib/env';
+import { getWsUrl } from '../lib/env';
 import {
   WebSocketConnectionState,
   ServerMessage,
   SpeechResultMessage,
   VadMessage,
+  StatusMessage,
+  LlmDeltaMessage,
+  LlmDoneMessage,
+  RagSourcesMessage,
+  TtsChunkMessage,
+  TtsDoneMessage,
   ErrorMessage,
 } from '../types/websocket';
 import {
@@ -19,11 +25,19 @@ import {
   createStopMessage,
   createPingMessage,
 } from '../services/protocol';
-import { fetchAuthToken } from '../services/api';
 
 export interface UseWebSocketOptions {
+  languageHint?: string | null;
+  authToken?: string | null;
+  sessionId?: string | null;
   onSpeechResult?: (result: SpeechResultMessage) => void;
   onVadState?: (vad: VadMessage) => void;
+  onStatus?: (status: StatusMessage) => void;
+  onLlmDelta?: (delta: LlmDeltaMessage) => void;
+  onLlmDone?: (done: LlmDoneMessage) => void;
+  onRagSources?: (sources: RagSourcesMessage) => void;
+  onTtsChunk?: (chunk: TtsChunkMessage) => void;
+  onTtsDone?: (done: TtsDoneMessage) => void;
   onError?: (err: ErrorMessage) => void;
   onBinaryMessage?: (buffer: ArrayBuffer) => void;
   onReady?: () => void;
@@ -58,7 +72,40 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     }
   }, []);
 
-  const connect = useCallback(async () => {
+  const sendStart = useCallback(
+    (overrideOptions?: {
+      language_hint?: string | null;
+      auth_token?: string | null;
+      session_id?: string | null;
+    }) => {
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        const lang =
+          overrideOptions?.language_hint !== undefined
+            ? overrideOptions.language_hint
+            : optionsRef.current.languageHint;
+        const token =
+          overrideOptions?.auth_token !== undefined
+            ? overrideOptions.auth_token
+            : optionsRef.current.authToken;
+        const sessId =
+          overrideOptions?.session_id !== undefined
+            ? overrideOptions.session_id
+            : optionsRef.current.sessionId;
+
+        const startMsg = createStartMessage({
+          sample_rate: 16000,
+          encoding: 'pcm_s16le',
+          language_hint: lang,
+          auth_token: token,
+          session_id: sessId,
+        });
+        socketRef.current.send(JSON.stringify(startMsg));
+      }
+    },
+    []
+  );
+
+  const connect = useCallback(() => {
     cleanupSocket();
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -68,15 +115,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     setConnectionState((prev) => (prev === 'disconnected' ? 'connecting' : 'reconnecting'));
     setLastError(null);
 
-    let tokenParam = '';
-    if (isAuthRequired()) {
-      const token = await fetchAuthToken();
-      if (token) {
-        tokenParam = `?token=${encodeURIComponent(token)}`;
-      }
-    }
-
-    const wsUrl = `${getWsUrl()}${tokenParam}`;
+    // Strict Phase 9 rule: NO token in URL query parameter. Authentication is in-frame.
+    const wsUrl = getWsUrl();
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -87,8 +127,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         reconnectAttemptRef.current = 0;
         setLastError(null);
 
-        // Send Protocol v1 start handshake
-        const startMsg = createStartMessage();
+        // Send Protocol v1 start handshake with in-frame auth_token and language_hint
+        const startMsg = createStartMessage({
+          sample_rate: 16000,
+          encoding: 'pcm_s16le',
+          language_hint: optionsRef.current.languageHint ?? null,
+          auth_token: optionsRef.current.authToken ?? null,
+          session_id: optionsRef.current.sessionId ?? null,
+        });
         ws.send(JSON.stringify(startMsg));
       };
 
@@ -107,8 +153,32 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
               optionsRef.current.onVadState?.(message);
               break;
 
+            case 'status':
+              optionsRef.current.onStatus?.(message);
+              break;
+
             case 'speech_result':
               optionsRef.current.onSpeechResult?.(message);
+              break;
+
+            case 'llm_delta':
+              optionsRef.current.onLlmDelta?.(message);
+              break;
+
+            case 'llm_done':
+              optionsRef.current.onLlmDone?.(message);
+              break;
+
+            case 'rag_sources':
+              optionsRef.current.onRagSources?.(message);
+              break;
+
+            case 'tts_chunk':
+              optionsRef.current.onTtsChunk?.(message);
+              break;
+
+            case 'tts_done':
+              optionsRef.current.onTtsDone?.(message);
               break;
 
             case 'error':
@@ -123,8 +193,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
               break;
 
             default:
-              // Reserved messages (llm_delta, tts_chunk, etc.) are safely ignored
-              console.debug('[WebSocket] Handled reserved/pass-through message:', message.type);
               break;
           }
         } else if (event.data instanceof ArrayBuffer) {
@@ -147,7 +215,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
         setConnectionState('reconnecting');
         if (event.code === 1008) {
-          setLastError('Authentication policy violation (close code 1008).');
+          setLastError('Authentication policy violation (close code 1008). Sign-in required.');
         }
 
         // Exponential backoff: min 1s, max 10s
@@ -218,6 +286,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     connectionState,
     isServerReady,
     lastError,
+    sendStart,
     sendAudioFrame,
     sendStop,
     sendPing,

@@ -17,6 +17,8 @@ export interface StartMessage {
   sample_rate?: number;
   encoding?: string;
   language_hint?: string | null;
+  auth_token?: string | null;
+  session_id?: string | null;
 }
 
 export interface StopMessage {
@@ -44,6 +46,15 @@ export interface VadMessage {
   state: 'speech_start' | 'speech_end';
 }
 
+export interface StatusMessage {
+  type: 'status';
+  state?: 'loading_model' | 'model_ready' | string;
+  engine?: string;
+  status?: string;
+  message?: string;
+  [key: string]: any;
+}
+
 export interface SpeechResultMessage {
   type: 'speech_result';
   transcript: string;
@@ -57,8 +68,50 @@ export interface SpeechResultMessage {
   debug?: {
     raw_tags?: string[];
     vad_has_speech?: boolean;
+    segment_index?: number;
+    segment_bytes?: number;
+    segment_duration_s?: number;
+    session_total_audio_bytes?: number;
+    flushed_on_stop?: boolean;
     [key: string]: any;
   };
+}
+
+export interface LlmDeltaMessage {
+  type: 'llm_delta';
+  delta: string;
+}
+
+export interface RagSourceItem {
+  doc_name: string;
+  chunk_id: string;
+  score: number;
+  [key: string]: any;
+}
+
+export interface RagSourcesMessage {
+  type: 'rag_sources';
+  sources: RagSourceItem[];
+}
+
+export interface LlmDoneMessage {
+  type: 'llm_done';
+  text: string;
+  sources?: RagSourceItem[];
+}
+
+export interface TtsChunkMessage {
+  type: 'tts_chunk';
+  index: number;
+  sample_rate: number;
+  text: string;
+  format: string;
+}
+
+export interface TtsDoneMessage {
+  type: 'tts_done';
+  total_chunks: number;
+  total_duration_ms: number;
 }
 
 export interface ErrorMessage {
@@ -67,23 +120,15 @@ export interface ErrorMessage {
   message: string;
 }
 
-// --- Reserved Downstream Message Types (Phase 5-8) ---
-export type ReservedMessageType =
-  | 'llm_delta'
-  | 'llm_done'
-  | 'tts_chunk'
-  | 'tts_done'
-  | 'status';
-
-export interface ReservedMessage {
-  type: ReservedMessageType;
-  [key: string]: any;
-}
-
 export type ServerMessage =
   | ReadyMessage
   | PongMessage
   | VadMessage
+  | StatusMessage
   | SpeechResultMessage
-  | ErrorMessage
-  | ReservedMessage;
+  | LlmDeltaMessage
+  | RagSourcesMessage
+  | LlmDoneMessage
+  | TtsChunkMessage
+  | TtsDoneMessage
+  | ErrorMessage;

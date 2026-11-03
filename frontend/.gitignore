@@ -1,0 +1,10 @@
+# Node / Frontend local ignores
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Un-ignore frontend/src/lib (overriding root unanchored Python lib/ rule)
+!src/lib/
+!src/lib/**
+
