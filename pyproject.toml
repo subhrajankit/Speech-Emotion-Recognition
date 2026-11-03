@@ -33,11 +33,16 @@ minversion = "8.0"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--import-mode=importlib --ignore=tests/legacy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "model: marks tests that require full model weights or heavy deep learning dependencies",
     "unit: marks fast unit tests",
     "integration: marks multi-component integration tests",
+    "model: marks tests that require full model weights or heavy deep learning dependencies",
+    "slow: marks slow-running tests",
+    "gpu: marks tests requiring a physical GPU or CUDA acceleration",
     "postgres: marks tests that require a live PostgreSQL instance",
+    "legacy: marks legacy tests excluded from default runs",
 ]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

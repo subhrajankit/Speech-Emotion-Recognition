@@ -2,6 +2,54 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 10] - Testing and CI (2026-11-03)
+- **CI-Lite Test Suite (`requirements-ci.txt`)**:
+  - Authored minimal `requirements-ci.txt` with zero heavy machine learning packages (no `torch`, `funasr`, `nemo`, or `sentence-transformers`).
+  - Created and validated isolated `.venv-ci` environment.
+  - Lite test run: `pytest -m "not model and not slow and not gpu and not postgres"` passes 161 tests, 0 failures, 11 deselected across 3 consecutive runs (15.33s, 16.14s, 15.10s) with 0 flaky tests.
+- **Architectural Isolation Gate**:
+  - Implemented `scripts/ci/check_import_isolation.py` performing AST static inspection across `ai/` and `backend/app/services/speech_service.py`.
+  - Guaranteed perception independence: speech perception and routing modules strictly import 0 symbols or submodules from `llm_service`, `rag`, or `tts`.
+- **Degraded Voice Pipeline Test Suite (Checklist Item 11)**:
+  - Authored `tests/backend/test_degraded_pipeline.py` testing all 5 degraded modes:
+    1. No LLM (503 / connection failure -> `speech_result` delivered, friendly error event emitted).
+    2. No RAG (unindexed / missing store -> graceful fallback to chat without citations).
+    3. No TTS (disabled / synthesis error -> text streaming delivered without audio playback).
+    4. No DB (persistence exception -> turn completes without delay, failure logged and swallowed).
+    5. All 4 Down (catastrophic downstream outage -> core perception invariant holds: `speech_result` produced with transcript and emotion).
+- **Test Double Refinements**:
+  - Adjusted `FakeSenseVoiceEngine` and `FakeIndicConformerEngine` in `tests/test_doubles.py` to support explicit test injection.
+  - Made `test_sensevoice_engine.py` skip ONLY on missing dependencies/weights (`FileNotFoundError`, `OSError`), failing on any other unexpected runtime exceptions.
+  - Fixed fallback numpy vector saving in `rag/vectorstore.py` to preserve binary format without requiring native FAISS.
+- **GitHub Actions Workflow (`.github/workflows/ci.yml`)**:
+  - Authored Linux CI workflow (`ubuntu-latest`) with 3 jobs: `import-isolation`, `backend-lite` (with pytest-cov), and `frontend` (`npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm test`, `npm run build`). Validated with PyYAML.
+- **Real-Model Verification Script (`scripts/e2e_real.py`)**:
+  - Implemented standalone script spawning backend server from HEAD, polling `/api/health`, and running live Hindi (`sample_hindi_speech.wav`, `language_hint="hi"`) and English (`english_speech_16k.wav`, `language_hint="en"`) WebSocket turns.
+  - Verified real Hindi transcript (`"आज मौसम बहुत अच्छा है"`), emotion invariant (`emotion=None`), and real English transcript with emotion (`"neutral"`).
+  - Saved complete untrimmed logs to `docs/deployment/runs/run_phase10_e2e_real.txt`.
+- **Full Local Suite Run (`.venv`)**:
+  - 171 passed, 1 skipped (`postgres`), 0 failed in 144.27s (0:02:24).
+  - Measured 72% overall code coverage across `backend/app`, `ai`, and `rag`.
+  - Documented slowest 10 test durations.
+
+## [Phase 9b] - Frontend Integration (2026-11-03)
+- **Language Selector & Transparent Mode Disclosure**:
+  - Implemented 3-option selector: Auto (`language_hint=null`), English (`language_hint="en"`), Hindi (`language_hint="hi"`).
+  - Auto mode explicitly discloses routing behavior: default engine is SenseVoice; language detection on first frame is not yet implemented.
+- **Multi-Segment Utterance Architecture**:
+  - Updated frontend state store (`useVoiceAssistantStore`) to represent each `speech_result` as an independent utterance row identified by `segment_index` with dedicated assistant reply streaming.
+- **Dynamic Model-Loading Status & Friendly Error Mapping**:
+  - Rendered dismissible banner for `status: loading_model` ("Loading speech model (first use can take 30 s)...") cleared on `model_ready`.
+  - Mapped error codes (`INFERENCE_ERROR`, `llm_unavailable`, `llm_bad_response`, `tts_unavailable`, auth errors, rate limits) to actionable UI banners while keeping transcripts and emotion tags visible.
+- **Null-Safe Telemetry & Voice Reply Indicator**:
+  - Rendered `null` emotion and confidence values cleanly as `"-"`.
+  - Polled `/api/health` components at startup; if `tts` is `"disabled"`, hidden playback controls and displayed "Voice replies are off on this server".
+- **Session Authentication & History Management**:
+  - Implemented in-memory JWT storage with transparent XSS vs convenience security trade-off disclosure in UI.
+  - Built Session History drawer: lists sessions, inspects turn predictions/transcripts, deletes individual sessions, and executes "Delete All My Data" purge.
+- **Build & Quality Gates**:
+  - Frontend suite verified: 32/32 tests passing in Vitest (`npm test`), 0 TypeScript errors (`npx tsc --noEmit`), 0 ESLint warnings (`npm run lint`), production bundle build successful (`npm run build`).
+
 ## [Phase 9] - Database, Auth, History (2026-11-03)
 - **Porting from Legacy Tree (`src/` quarantined, zero imports or edits to `src/`)**:
   - `src/backend/database/storage.py` -> `backend/app/models/` + `backend/app/services/history_service.py`: Replaced raw audio file saving and legacy schemas with 7 clean SQLAlchemy 2.x declarative models (`users`, `sessions`, `predictions`, `transcripts`, `emotion_results`, `model_versions`, `messages`).

@@ -33,6 +33,7 @@ def populated_rag_service(tmp_path):
         index_dir=str(index_dir),
         similarity_threshold=0.20,
     )
+    service.embedder = fake_emb
     service.initialize()
     if service.retriever:
         service.retriever.embedder = fake_emb
@@ -95,6 +96,7 @@ async def test_knowledge_fallback_when_index_unloaded():
     degrades to chat without crashing or fabricating citations.
     """
     empty_service = RAGService(index_dir="non_existent_dir_123")
+    empty_service.embedder = FakeEmbeddings()
     empty_service.initialize()
 
     turn_res = await empty_service.process_turn("According to the document, what is the policy?")
@@ -147,6 +149,7 @@ def test_websocket_knowledge_query_and_chat_turn_events(monkeypatch, tmp_path):
     )
     rag_service.index_dir = index_dir
     rag_service.similarity_threshold = 0.20
+    rag_service.embedder = fake_emb
     rag_service.initialize()
     if rag_service.retriever:
         rag_service.retriever.embedder = fake_emb

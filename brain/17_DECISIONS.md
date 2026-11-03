@@ -540,6 +540,27 @@
   - Zero credential leakage in server URLs or access logs.
   - Complete fault isolation between the database and the voice streaming pipeline.
 
+## ADR 036: Phase 10 — CI-Lite Virtual Environment, Decoupled Architectural Isolation & Zero-Sleep Real-Model Verification
+- **Context**:
+  CI pipelines on standard hosted runners cannot afford 20GB+ downloads of heavy deep learning weights (`torch`, `funasr`, `nemo`, `sentence-transformers`) or GPU runners for routine commits. At the same time, tests must be deterministic, non-flaky, and free from arbitrary `time.sleep` calls, while real models must still be verified locally with zero mocking.
+- **Decision**:
+  1. **Dual-Environment Test Strategy**:
+     - Created `requirements-ci.txt` with lightweight dependencies (`fastapi`, `uvicorn`, `pydantic`, `sqlalchemy`, `alembic`, `numpy`, `soundfile`, `scipy`, `onnxruntime`, `httpx`, `websockets`, `pytest`, `pytest-asyncio`, `pytest-cov`). Runs the CI-lite suite in ~15 seconds with zero model weights.
+     - Full `.venv` environment executes the complete suite with real models locally.
+  2. **Strict Skip Semantics on Real Model Tests**:
+     - `test_real_model_inference` and dual-engine tests decorated with `@pytest.mark.model` skip ONLY when libraries or weights are absent (`FileNotFoundError`, `OSError`). Any other unexpected runtime exception fails the test.
+  3. **Automated Static Architectural Isolation Gate**:
+     - Implemented `scripts/ci/check_import_isolation.py` performing AST static inspection. Guarantees that `ai/` and `speech_service.py` never import `llm_service`, `rag`, or `tts`.
+  4. **Degraded Voice Pipeline End-to-End Suite**:
+     - Authored `tests/backend/test_degraded_pipeline.py` exercising all 5 degraded modes (No LLM, No RAG, No TTS, No DB, and All 4 Down). Proved that perception (ASR + SER) remains strictly unblocked and delivers valid `speech_result` even under total downstream failure.
+  5. **Separate Real-Model Manual Verification Script**:
+     - Created `scripts/e2e_real.py` as an explicit manual script (not a unit test) that spawns the backend from HEAD, executes authentic Hindi and English turns over `/ws/speech`, and saves untrimmed output to `docs/deployment/runs/run_phase10_e2e_real.txt`.
+- **Consequences**:
+  - Fast, reliable, deterministic CI runs in seconds without ML hardware.
+  - Provable architectural decoupling that prevents regression of the speech perception invariant.
+  - Reproducible real-model verification script documented for local testing.
+
+
 
 
 

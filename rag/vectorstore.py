@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 try:
     import faiss
     FAISS_AVAILABLE = True
@@ -21,8 +23,6 @@ except (ImportError, Exception):
     logger.warning("faiss package not available or blocked by system policy. Using NumpyVectorIndex fallback.")
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
 
 
 class IndexConfigMismatchError(Exception):
@@ -195,7 +195,8 @@ class FAISSVectorStore:
             if vecs is None:
                 vecs = np.empty((0, self.dimension), dtype=np.float32)
             # Save both as index.faiss (numpy binary) and vectors.npy for cross-platform portability
-            np.save(str(index_path), vecs)
+            with open(index_path, "wb") as f:
+                np.save(f, vecs)
             np.save(str(npy_path), vecs)
 
         # 2. Save Chunks JSON

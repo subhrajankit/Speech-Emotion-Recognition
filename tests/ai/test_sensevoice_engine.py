@@ -94,8 +94,10 @@ def test_real_model_inference():
     # Only reached if dependencies exist; skip cleanly if weights are not available locally
     try:
         engine = SenseVoiceSpeechEngine(model_dir=model_dir, device="cpu", auto_load=True)
-    except Exception as e:
-        pytest.skip(f"SenseVoice model could not be loaded ({e}). Skipping real model test.")
+    except (FileNotFoundError, OSError) as e:
+        if "not found" in str(e).lower() or "no such file" in str(e).lower():
+            pytest.skip(f"SenseVoice weights absent: {e}")
+        raise
 
     from ai.preprocessing.audio import load_and_preprocess_audio
     audio = load_and_preprocess_audio("tests/samples/sample_chinese_speech.wav")
