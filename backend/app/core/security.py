@@ -1,22 +1,89 @@
 """
 Authentication and JWT management for VoiceSense AI Backend.
-Provides zero-dependency HMAC-SHA256 (HS256) JWT generation and verification.
+Provides zero-dependency HMAC-SHA256 (HS256) JWT generation and verification,
+stdlib scrypt memory-hard password hashing, and FastAPI authentication dependencies.
 """
 
+import os
 import base64
 import hashlib
 import hmac
 import json
 import time
 from typing import Any, Dict, Optional
+from fastapi import Depends, HTTPException, status, Header
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
+from backend.app.core.database import get_db
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 class AuthenticationError(Exception):
     """Raised when token validation or session authentication fails."""
     pass
 
+
+# ---------------------------------------------------------------------------
+# Password Hashing via Python stdlib hashlib.scrypt (zero native dependencies)
+# ---------------------------------------------------------------------------
+
+def hash_password(password: str) -> str:
+    """
+    Hashes a password using stdlib hashlib.scrypt with a 16-byte cryptographically secure salt.
+    Format: $scrypt$ln=14,r=8,p=1$<salt_b64>$<hash_b64>
+    """
+    if not password:
+        raise ValueError("Password cannot be empty")
+    salt = os.urandom(16)
+    # n = 2**14 = 16384, r = 8, p = 1, maxmem = 32MB
+    derived = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=16384,
+        r=8,
+        p=1,
+        maxmem=32 * 1024 * 1024
+    )
+    salt_b64 = base64.b64encode(salt).decode("ascii")
+    hash_b64 = base64.b64encode(derived).decode("ascii")
+    return f"$scrypt$ln=14,r=8,p=1${salt_b64}${hash_b64}"
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verifies a plain password against an scrypt hash using constant-time comparison.
+    """
+    if not plain_password or not hashed_password:
+        return False
+    try:
+        if not hashed_password.startswith("$scrypt$"):
+            return False
+        parts = hashed_password.split("$")
+        # Format: ["", "scrypt", "ln=14,r=8,p=1", salt_b64, hash_b64]
+        if len(parts) != 5:
+            return False
+        _params, salt_b64, hash_b64 = parts[2], parts[3], parts[4]
+        salt = base64.b64decode(salt_b64.encode("ascii"))
+        expected_hash = base64.b64decode(hash_b64.encode("ascii"))
+        derived = hashlib.scrypt(
+            plain_password.encode("utf-8"),
+            salt=salt,
+            n=16384,
+            r=8,
+            p=1,
+            maxmem=32 * 1024 * 1024
+        )
+        return hmac.compare_digest(derived, expected_hash)
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Zero-dependency RFC 7515 HS256 JWT Token Management
+# ---------------------------------------------------------------------------
 
 def _base64url_encode(data: bytes) -> str:
     """Base64url encode without padding as per RFC 7515."""
@@ -32,14 +99,16 @@ def _base64url_decode(data_str: str) -> bytes:
 
 
 def create_access_token(
-    session_id: str,
+    user_id: str,
+    username: Optional[str] = None,
+    session_id: Optional[str] = None,
     client_id: str = "web-client",
     expires_in_minutes: Optional[int] = None,
     custom_claims: Optional[Dict[str, Any]] = None,
     secret_key: Optional[str] = None,
 ) -> str:
     """
-    Generate an HS256 JWT access token for WebSocket / WebTransport sessions.
+    Generate an HS256 JWT access token for REST and WebSocket sessions.
     """
     secret = (secret_key or settings.JWT_SECRET).encode("utf-8")
     now = int(time.time())
@@ -52,7 +121,9 @@ def create_access_token(
     }
 
     payload: Dict[str, Any] = {
-        "sub": session_id,
+        "sub": user_id,
+        "username": username or "",
+        "session_id": session_id,
         "client_id": client_id,
         "iat": now,
         "nbf": now,
@@ -149,3 +220,97 @@ def verify_access_token(
             raise AuthenticationError("Token is not yet active (nbf check failed)")
 
     return payload
+
+
+# ---------------------------------------------------------------------------
+# FastAPI Authentication Dependencies
+# ---------------------------------------------------------------------------
+
+def extract_token_from_header(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """Helper to extract bearer token from standard Authorization header."""
+    if not authorization:
+        return None
+    parts = authorization.strip().split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1]
+    return authorization
+
+
+def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme),
+    auth_header_token: Optional[str] = Depends(extract_token_from_header),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the authenticated User or None if unauthenticated.
+    Accepts token from either OAuth2 scheme or Authorization header.
+    """
+    raw_token = token or auth_header_token
+    if not raw_token:
+        return None
+
+    try:
+        payload = verify_access_token(raw_token)
+    except AuthenticationError:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    from backend.app.models.user import User
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
+def get_current_user(
+    token: Optional[str] = Depends(oauth2_scheme),
+    auth_header_token: Optional[str] = Depends(extract_token_from_header),
+    db: Session = Depends(get_db),
+):
+    """
+    Strict authentication dependency. Raises HTTP 401 if token is missing, expired, or invalid.
+    """
+    raw_token = token or auth_header_token
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required: missing Bearer token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        payload = verify_access_token(raw_token)
+    except AuthenticationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid or expired authentication token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload: missing 'sub' claim",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    from backend.app.models.user import User
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User associated with token no longer exists",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive",
+        )
+
+    return user

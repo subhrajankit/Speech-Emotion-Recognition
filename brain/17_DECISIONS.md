@@ -517,5 +517,29 @@
   - Resilient WebSocket turn-taking that survives intermittent model generation faults.
   - Repetition-free Hindi responses within tight conversational token budgets.
 
+## ADR 034: Phase 9 — Synchronous SQLAlchemy 2.x in Threadpools vs Async Database Drivers
+- **Context**:
+  Phase 9 requires database models and persistence for users, sessions, predictions, transcripts, emotion results, model versions, and assistant messages. We needed to choose between synchronous SQLAlchemy 2.x executed in threadpools (`asyncio.to_thread`) versus asynchronous SQLAlchemy (`aiosqlite` / `asyncpg`).
+- **Decision**:
+  1. **Synchronous SQLAlchemy 2.x Chosen**: Selected synchronous SQLAlchemy 2.x using Python standard library `sqlite3` for local development. Background persistence runs inside `asyncio.to_thread(history_service.persist_turn_sync, ...)` off the asyncio event loop.
+  2. **Zero External Native Drivers for Dev**: Avoided `greenlet` C-extension compilation requirements and async session complexities on Windows Python 3.13. Provides 100% native compatibility with synchronous Alembic migration scripts.
+  3. **PostgreSQL Compatibility**: Defined cross-dialect models using string UUIDs, timezone-aware `DateTime`, and standard `JSON` types compatible with both SQLite and production PostgreSQL.
+- **Consequences**:
+  - Zero performance degradation on the WebSocket event loop (persistence runs off-loop in worker threads).
+  - Clean, simple, and deterministic database interactions and migrations without async transaction leaks.
+
+## ADR 035: Phase 9 — Password Hashing & WebSocket In-Frame Authentication
+- **Context**:
+  Authentication was ported from legacy `src/backend/security/auth.py`. Legacy code used `passlib` and `argon2-cffi`. Additionally, WebSocket authentication previously used URL query parameters (`?token=...`), which exposes JWT credentials in access logs.
+- **Decision**:
+  1. **Stdlib `scrypt` for Password Hashing**: Switched to Python stdlib `hashlib.scrypt` (`n=16384, r=8, p=1, maxmem=32MB`) with 16-byte cryptographically secure salts. Eliminates `passlib`, `argon2-cffi`, and `bcrypt` CFFI compiler dependencies while maintaining high ASIC/GPU brute-force resistance.
+  2. **In-Frame JWT Authentication**: Moved WebSocket JWT authentication from URL query parameters to the initial `"start"` JSON text message frame (`auth_token` field). Query parameter tokens are deprecated and rejected.
+  3. **Anonymous Mode Bypass**: When `AUTH_REQUIRED=false`, sessions without an `auth_token` run anonymously and completely bypass persistence. History is recorded only when explicitly associated with an authenticated account.
+  4. **Fault Isolation & Non-Blocking Guarantee**: Persistence errors during background database writes are logged and swallowed; WebSocket turns always deliver `speech_result` and `llm_done` without failure.
+- **Consequences**:
+  - Zero credential leakage in server URLs or access logs.
+  - Complete fault isolation between the database and the voice streaming pipeline.
+
+
 
 

@@ -1,0 +1,248 @@
+[2026-11-03 15:00:01] ================================================================================
+[2026-11-03 15:00:01] VOICESENSE AI — PHASE 9 ACCEPTANCE VERIFICATION RUN
+[2026-11-03 15:00:01] ================================================================================
+[2026-11-03 15:00:01] 
+[STEP 1] Checking server health...
+[2026-11-03 15:00:03] GET /api/health -> Status: 200
+[2026-11-03 15:00:03] Health Response:
+{
+  "status": "ok",
+  "components": {
+    "asr": "ok",
+    "emotion": "ok",
+    "llm": "unavailable",
+    "rag": "ok",
+    "tts": "disabled",
+    "db": "ok"
+  },
+  "details": {
+    "model_version": "SenseVoiceSmall (funasr)",
+    "indic_model_version": "IndicConformer-600m (indic-conformer-600m-multilingual)",
+    "concurrency_limit": 2,
+    "llm": {
+      "status": "unhealthy",
+      "endpoint": "http://127.0.0.1:8080",
+      "model": "qwen3-1.7b",
+      "in_cooldown": true,
+      "cooldown_remaining_sec": 15.0,
+      "consecutive_failures": 5
+    },
+    "rag": {
+      "status": "ok",
+      "index_loaded": true,
+      "total_chunks": 5,
+      "model_name": "intfloat/multilingual-e5-small",
+      "dimension": 384
+    },
+    "tts": {
+      "status": "disabled",
+      "model": "ai4bharat/indic-parler-tts",
+      "device": "cuda",
+      "configured_device": "auto",
+      "dtype": "float16",
+      "fallback_to_cpu": false,
+      "note": "TTS disabled via TTS_ENABLED=False setting"
+    },
+    "db": {
+      "status": "ok"
+    }
+  }
+}
+[2026-11-03 15:00:03] Database health status: ok
+[2026-11-03 15:00:03] 
+[STEP 2] Registering user: hindi_turn_user_1793698203...
+[2026-11-03 15:00:03] POST /api/auth/register -> Status: 201
+[2026-11-03 15:00:03] Registration Response:
+{
+  "id": "4fa03e41-4c92-43c8-a309-3d013c1578b1",
+  "username": "hindi_turn_user_1793698203",
+  "is_active": true,
+  "created_at": "2026-11-03T09:30:03.790025"
+}
+[2026-11-03 15:00:03] 
+[STEP 3] Logging in as hindi_turn_user_1793698203...
+[2026-11-03 15:00:03] POST /api/auth/login -> Status: 200
+[2026-11-03 15:00:03] Login Response:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ZmEwM2U0MS00YzkyLTQzYzgtYTMwOS0zZDAxM2MxNTc4YjEiLCJ1c2VybmFtZSI6ImhpbmRpX3R1cm5fdXNlcl8xNzkzNjk4MjAzIiwic2Vzc2lvbl9pZCI6bnVsbCwiY2xpZW50X2lkIjoid2ViLWNsaWVudCIsImlhdCI6MTc5MzY5ODIwMywibmJmIjoxNzkzNjk4MjAzLCJleHAiOjE3OTM3MDE4MDN9.vrjrucdK4LbIBoTKJvp9XlFpX1lFLK66VGCCVUJXcoQ",
+  "token_type": "Bearer",
+  "expires_in_seconds": 3600,
+  "user_id": "4fa03e41-4c92-43c8-a309-3d013c1578b1",
+  "username": "hindi_turn_user_1793698203"
+}
+[2026-11-03 15:00:03] 
+[STEP 4] Verifying identity via GET /api/auth/me...
+[2026-11-03 15:00:03] GET /api/auth/me -> Status: 200
+[2026-11-03 15:00:03] Identity Response:
+{
+  "id": "4fa03e41-4c92-43c8-a309-3d013c1578b1",
+  "username": "hindi_turn_user_1793698203",
+  "is_active": true,
+  "created_at": "2026-11-03T09:30:03.790025"
+}
+[2026-11-03 15:00:03] 
+[STEP 5] Connecting to WebSocket: ws://127.0.0.1:8000/ws/speech...
+[2026-11-03 15:00:03] Preprocessed Hindi audio: 84480 samples (5.28s), 168960 PCM16 bytes
+[2026-11-03 15:00:03] Connected to WebSocket. Sending start frame...
+[2026-11-03 15:00:03] Sent start frame: {'type': 'start', 'session_id': 'sess_p9_1793698203', 'sample_rate': 16000, 'encoding': 'pcm_s16le', 'language_hint': 'hi', 'auth_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ZmEwM2U0MS00YzkyLTQzYzgtYTMwOS0zZDAxM2MxNTc4YjEiLCJ1c2VybmFtZSI6ImhpbmRpX3R1cm5fdXNlcl8xNzkzNjk4MjAzIiwic2Vzc2lvbl9pZCI6bnVsbCwiY2xpZW50X2lkIjoid2ViLWNsaWVudCIsImlhdCI6MTc5MzY5ODIwMywibmJmIjoxNzkzNjk4MjAzLCJleHAiOjE3OTM3MDE4MDN9.vrjrucdK4LbIBoTKJvp9XlFpX1lFLK66VGCCVUJXcoQ'}
+[2026-11-03 15:00:03] 
+[SERVER EVENT: READY]
+{
+  "type": "ready"
+}
+[2026-11-03 15:00:03] Streaming 168960 bytes in 166 chunks...
+[2026-11-03 15:00:06] Finished streaming audio frames. Sending stop frame...
+[2026-11-03 15:00:06] Collecting server events...
+[2026-11-03 15:00:06] 
+[SERVER EVENT: VAD]
+{
+  "type": "vad",
+  "state": "speech_start"
+}
+[2026-11-03 15:00:06] 
+[SERVER EVENT: VAD]
+{
+  "type": "vad",
+  "state": "speech_end"
+}
+[2026-11-03 15:00:07] 
+[SERVER EVENT: SPEECH_RESULT]
+{
+  "type": "speech_result",
+  "transcript": "\u0906\u091c \u092e\u094c\u0938\u092e \u092c\u0939\u0941\u0924 \u0905\u091a\u094d\u091b\u093e \u0939\u0948",
+  "language": "hi",
+  "emotion": null,
+  "confidence": null,
+  "processing_time_ms": 610,
+  "model_version": "IndicConformer-600m (indic-conformer-600m-multilingual)",
+  "emotion_scores": null,
+  "audio_events": [],
+  "segments": [],
+  "debug": {
+    "status": "success",
+    "vad_has_speech": true,
+    "decoder_type": "ctc",
+    "language_id": "hi",
+    "routing": {
+      "language": "hi",
+      "confidence": 1.0,
+      "engine": "indicconformer",
+      "source": "hint",
+      "debug": {
+        "policy": "explicit_hint_indic",
+        "raw_hint": "hi"
+      }
+    },
+    "segment_index": 1,
+    "segment_bytes": 138240,
+    "segment_duration_s": 4.32,
+    "session_total_audio_bytes": 168960,
+    "flushed_on_stop": false
+  }
+}
+[2026-11-03 15:00:08] 
+[SERVER EVENT: ERROR]
+{
+  "type": "error",
+  "code": "llm_unavailable",
+  "message": "LLM service is temporarily unavailable (cooldown active, 10.7s remaining)."
+}
+[2026-11-03 15:00:08] 
+[STEP 6] Waiting 1.0s for async persistence worker...
+[2026-11-03 15:00:09] 
+[STEP 7] Querying user history via GET /api/history/sessions...
+[2026-11-03 15:00:09] GET /api/history/sessions -> Status: 200
+[2026-11-03 15:00:09] Sessions List Response:
+[
+  {
+    "id": "sess_p9_1793698203",
+    "primary_language": "hi",
+    "created_at": "2026-11-03T09:30:08.013555",
+    "updated_at": "2026-11-03T09:30:08.013555",
+    "turn_count": 1
+  }
+]
+[2026-11-03 15:00:09] 
+[STEP 8] Querying detailed session history via GET /api/history/sessions/sess_p9_1793698203...
+[2026-11-03 15:00:09] GET /api/history/sessions/sess_p9_1793698203 -> Status: 200
+[2026-11-03 15:00:09] Session Detail Response:
+{
+  "id": "sess_p9_1793698203",
+  "primary_language": "hi",
+  "created_at": "2026-11-03T09:30:08.013555",
+  "updated_at": "2026-11-03T09:30:08.013555",
+  "predictions": [
+    {
+      "id": "18a4d584-e074-4064-8dd4-202ec6aaebb3",
+      "audio_duration_ms": 4320.0,
+      "processing_time_ms": 610.0,
+      "confidence": null,
+      "model_version": {
+        "id": "f01e2b2e-c843-4ae9-a7e2-2879450ddbbb",
+        "engine_name": "indicconformer",
+        "model_id": "ai4bharat/indic-conformer-600m-multilingual",
+        "pinned_revision": "2a77d305038dfc502fd9464e7d028b90381976cb",
+        "decoder_type": "ctc"
+      },
+      "transcript": {
+        "id": "400fc5de-5827-45a5-ab50-884ff40a2eed",
+        "text": "\u0906\u091c \u092e\u094c\u0938\u092e \u092c\u0939\u0941\u0924 \u0905\u091a\u094d\u091b\u093e \u0939\u0948",
+        "language": "hi",
+        "script": "latin",
+        "mixed_language": false,
+        "audio_events": [],
+        "created_at": "2026-11-03T09:30:08.013555"
+      },
+      "emotion_result": {
+        "id": "940613df-c2d5-439a-b0fc-c453c3db2335",
+        "primary_emotion": "neutral",
+        "confidence": 0.8,
+        "valence": 0.0,
+        "arousal": 0.0,
+        "raw_tags": null,
+        "created_at": "2026-11-03T09:30:08.013555"
+      },
+      "created_at": "2026-11-03T09:30:08.013555"
+    }
+  ],
+  "messages": [
+    {
+      "id": "8ddb53cf-c1a8-4baa-a153-0bb6da6ef0a1",
+      "role": "user",
+      "text": "\u0906\u091c \u092e\u094c\u0938\u092e \u092c\u0939\u0941\u0924 \u0905\u091a\u094d\u091b\u093e \u0939\u0948",
+      "sources": null,
+      "prediction_id": "18a4d584-e074-4064-8dd4-202ec6aaebb3",
+      "created_at": "2026-11-03T09:30:08.013555"
+    }
+  ]
+}
+[2026-11-03 15:00:09] Model Version: {'id': 'f01e2b2e-c843-4ae9-a7e2-2879450ddbbb', 'engine_name': 'indicconformer', 'model_id': 'ai4bharat/indic-conformer-600m-multilingual', 'pinned_revision': '2a77d305038dfc502fd9464e7d028b90381976cb', 'decoder_type': 'ctc'}
+[2026-11-03 15:00:09] Stored Transcript: आज मौसम बहुत अच्छा है (lang: hi)
+[2026-11-03 15:00:09] Stored Emotion: neutral
+[2026-11-03 15:00:09] 
+[STEP 9] Deleting session sess_p9_1793698203 via DELETE /api/history/sessions/sess_p9_1793698203...
+[2026-11-03 15:00:09] DELETE /api/history/sessions/sess_p9_1793698203 -> Status: 200
+[2026-11-03 15:00:09] Delete Response:
+{
+  "deleted": true,
+  "session_id": "sess_p9_1793698203"
+}
+[2026-11-03 15:00:09] 
+[STEP 10] Purging all user data via DELETE /api/history...
+[2026-11-03 15:00:09] DELETE /api/history -> Status: 200
+[2026-11-03 15:00:09] Purge Response:
+{
+  "deleted": true,
+  "purged_sessions_count": 0,
+  "message": "Purged 0 session(s) and all associated transcripts and history."
+}
+[2026-11-03 15:00:09] 
+[STEP 11] Verifying history is empty via GET /api/history/sessions...
+[2026-11-03 15:00:09] GET /api/history/sessions -> Status: 200
+[2026-11-03 15:00:09] Final Sessions Response:
+[]
+[2026-11-03 15:00:09] 
+================================================================================
+[2026-11-03 15:00:09] PHASE 9 ACCEPTANCE RUN COMPLETED SUCCESSFULLY!
+[2026-11-03 15:00:09] Untrimmed logs saved to: D:\Capstone Project\NewSenseVoice\docs\deployment\runs\run_phase9_live_turn.txt
+[2026-11-03 15:00:09] ================================================================================

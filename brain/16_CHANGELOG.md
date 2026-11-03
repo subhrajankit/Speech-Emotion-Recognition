@@ -2,6 +2,37 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 9] - Database, Auth, History (2026-11-03)
+- **Porting from Legacy Tree (`src/` quarantined, zero imports or edits to `src/`)**:
+  - `src/backend/database/storage.py` -> `backend/app/models/` + `backend/app/services/history_service.py`: Replaced raw audio file saving and legacy schemas with 7 clean SQLAlchemy 2.x declarative models (`users`, `sessions`, `predictions`, `transcripts`, `emotion_results`, `model_versions`, `messages`).
+  - `src/backend/security/auth.py` -> `backend/app/core/security.py` + `backend/app/api/auth.py`: Replaced passlib/argon2 CFFI dependencies with Python stdlib `hashlib.scrypt` (memory-hard, zero native dependencies); implemented zero-dependency RFC 7515 HS256 JWT management with constant-time signature verification.
+  - `src/backend/security/rate_limiter.py` -> `backend/app/core/rate_limiter.py`: Ported `SessionRateLimiter` (sliding-window 60s utterance rate, 30.0s max audio duration cap, 5MB buffer cap) and implemented `IPRateLimiter` for REST auth routes (10 requests/min).
+- **Database Engine & Declarative Models**:
+  - Built cross-dialect `backend/app/core/database.py` with SQLAlchemy 2.x declarative `Base`, engine factory, and session contexts.
+  - Defined all 7 models in `backend/app/models/` with cascading relationships from `User` and `Session`. Verified `git check-ignore -v backend/app/models/user.py` outputs nothing.
+- **Alembic Migrations**:
+  - Configured `alembic.ini` and `alembic/env.py` to source `settings.DATABASE_URL` dynamically with `render_as_batch=True` for SQLite schema alterations.
+  - Generated initial migration `alembic/versions/4acca05d22ce_001_initial_schema.py`.
+  - Verified migration cycle on fresh SQLite database: `alembic upgrade head -> downgrade base -> upgrade head`. Migrated `database/dev.db` to head.
+- **Endpoints & API**:
+  - Auth: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`.
+  - History: `GET /api/history/sessions`, `GET /api/history/sessions/{id}`, `DELETE /api/history/sessions/{id}`, `DELETE /api/history` (delete-my-data purge).
+  - Health: Added `db` component check reporting `"ok"`, `"unavailable"`, or `"not_configured"` without failing overall health status.
+- **WebSocket In-Frame Authentication & Fault Isolation**:
+  - Implemented in-frame JWT authentication in the `"start"` message (`auth_token`); deprecated and removed query parameter tokens (`?token=`).
+  - Handled anonymous mode when `AUTH_REQUIRED=false`: sessions without tokens run anonymously and bypass persistence completely.
+  - Dispatched turn persistence via `asyncio.to_thread` strictly after `speech_result` and `llm_done` emission. Errors are logged and swallowed; the speech pipeline remains uninterrupted.
+- **Privacy & Production Safety**:
+  - Strict zero raw audio persistence invariant verified via database schema inspection and temp directory scanning.
+  - `STORE_TRANSCRIPTS=false` setting redacts transcripts to `"[REDACTED_BY_POLICY]"`.
+  - `APP_ENV=production` refuses startup if `JWT_SECRET` is missing, default, or shorter than 32 characters.
+  - Documented plainly that PostgreSQL is unverified on live cluster in this phase (skipped test with clear reason when `DATABASE_URL_TEST` is unset).
+- **Live Server Run from HEAD**:
+  - Executed end-to-end run (`scripts/run_phase9_live_turn.py`) against live server: registered user, logged in, performed WebSocket turn with real human Hindi audio (`sample_hindi_speech.wav`, `language_hint="hi"`), verified IndicConformer ASR (`"आज मौसम बहुत अच्छा है"`), retrieved session history via REST API, and executed delete-my-data purge.
+  - Saved untrimmed execution logs to `docs/deployment/runs/run_phase9_live_turn.txt`.
+- **Test Suite**:
+  - 166 passed, 1 skipped (`test_postgres_schema_creation_and_migration`), 0 failed.
+
 ## [Phase 8i - Close-Out] - Reconcile Evidence, Fix SAC & Hindi Wording, LLM Robustness & Truth Table (2026-10-28)
 - **Evidence Reconciliation**:
   - English ASR: `english_speech_16k.wav` (SHA256: `ED2570C2AE49BDF8F6E76927BFC93595E558CBCDC8425FCAA4187692F2820CF2`, 263,450 bytes, mtime 2026-10-26 14:57:12, synthetic audio) was never replaced. The 8h report transcript "HELLO THIS IS A TEST OF SENSEVOICE" was a reconstructed/hallucinated string. Ground truth transcription is *"Voice sense A provides multilingual and emotion or air voice systems across 23 in languages."* Live WebSocket produces two segments due to VAD pause (Segment 1: *"Vice sense, yeah."*). Untrimmed logs saved to `docs/deployment/runs/cli_english_speech_8i.txt` and `docs/deployment/runs/ws_english_speech_8i.txt`.

@@ -1,0 +1,38 @@
+VoiceSense AI — Language Identification (LID) Benchmark on tests/samples/
+Generated: 2026-11-01T00:10:00+05:30
+Host: Windows 11 AMD Ryzen 5 7535HS (CPU Execution)
+Note: This set is small and contains existing repository fixtures (mostly synthetic TTS benchmarks + 1 authentic human Hindi recording).
+
+--- MODEL MEMORY FOOTPRINT (PEAK MEASURED VIA WIN32 PROCESS_MEMORY_COUNTERS_EX) ---
+Base Process (with PyTorch imported): WorkingSet = 511.3 MB, PrivateBytes = 1228.9 MB
+Whisper-tiny:                         WorkingSet = 936.9 MB (Delta WS = 425.0 MB), PrivateBytes = 2137.1 MB (Delta Priv = 907.2 MB)
+VoxLingua107 ECAPA:                   WorkingSet = 890.0 MB (Delta WS = 382.1 MB), PrivateBytes = 2255.6 MB (Delta Priv = 1026.6 MB)
+
+--- AUDIO SAMPLES FULL-CLIP EVALUATION ---
+en_14_words_gpu_fp16.wav         | 23.90s | WHISPER: ml  (0.232,  905.2ms) | VOX: no  (0.136, 132.9ms)
+en_5_words_gpu_fp16.wav          | 13.53s | WHISPER: en  (0.191,  752.0ms) | VOX: so  (0.563, 121.8ms)
+english_speech_16k.wav           |  8.23s | WHISPER: en  (0.635, 1187.4ms) | VOX: mt  (0.556,  79.7ms)
+hi_14_words_gpu_fp16.wav         | 17.09s | WHISPER: ar  (0.439,  865.7ms) | VOX: no  (0.245, 307.3ms)
+hi_5_words_gpu_fp16.wav          | 14.51s | WHISPER: fi  (0.255,  744.3ms) | VOX: no  (0.145,  77.5ms)
+output_en_5_gpu_fp16.wav         | 12.79s | WHISPER: ml  (0.311,  868.5ms) | VOX: si  (0.226, 226.2ms)
+output_english_cpu.wav           |  6.72s | WHISPER: en  (0.505,  721.6ms) | VOX: la  (0.461,  68.4ms)
+output_english_gpu.wav           |  6.58s | WHISPER: en  (0.701,  812.3ms) | VOX: en  (0.484,  82.8ms)
+output_english_gpu_bf16.wav      |  6.47s | WHISPER: en  (0.887,  847.0ms) | VOX: en  (0.617,  83.7ms)
+output_english_gpu_fp16.wav      |  8.23s | WHISPER: en  (0.634,  845.6ms) | VOX: mt  (0.517,  96.2ms)
+output_hi_5_gpu_fp16.wav         | 15.42s | WHISPER: sv  (0.196,  711.2ms) | VOX: no  (0.128, 298.7ms)
+output_hindi_cpu.wav             |  4.84s | WHISPER: hi  (0.950,  801.7ms) | VOX: hi  (0.995,  90.6ms)
+output_hindi_gpu.wav             |  4.60s | WHISPER: hi  (0.882,  679.4ms) | VOX: hi  (0.989,  77.7ms)
+output_hindi_gpu_bf16.wav        |  6.73s | WHISPER: hi  (0.970,  917.1ms) | VOX: hi  (0.991,  98.9ms)
+output_hindi_gpu_fp16.wav        |  5.42s | WHISPER: hi  (0.967,  801.0ms) | VOX: hi  (0.983, 100.0ms)
+reversed_hybrid_en_5_gpu_fp16.wav | 16.86s | WHISPER: ml  (0.266,  726.7ms) | VOX: no  (0.314, 271.0ms)
+sample_chinese_short.wav         |  2.50s | WHISPER: zh  (0.974,  736.7ms) | VOX: zh  (0.981,  90.2ms)
+sample_chinese_speech.wav        |  6.00s | WHISPER: zh  (0.998,  821.7ms) | VOX: zh  (1.000,  86.3ms)
+sample_hindi_speech.wav          |  5.28s | WHISPER: en  (0.243,  707.8ms) | VOX: sa  (0.448,  85.5ms)
+silence_1s.wav                   |  1.00s | WHISPER: en  (0.384,  923.0ms) | VOX: nn  (0.267, 106.3ms)
+
+--- SHORT CLIPS EVALUATION (1.5s & 2.5s) ---
+Authentic Hindi (1.5s)   | WHISPER: en  (0.656, 792.3ms) | VOX: mk  (0.474,  91.4ms)
+Authentic Hindi (2.5s)   | WHISPER: en  (0.635, 698.1ms) | VOX: uz  (0.826,  80.6ms)
+Authentic Chinese (1.5s) | WHISPER: ru  (0.295, 861.7ms) | VOX: ms  (0.378, 106.1ms)
+Authentic Chinese (2.5s) | WHISPER: zh  (0.974, 819.6ms) | VOX: zh  (0.981, 120.2ms)
+

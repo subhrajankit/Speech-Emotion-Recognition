@@ -7,11 +7,15 @@ This document defines the official **v1 WebSocket Streaming Protocol** for real-
 ## 1. Connection Endpoint & Handshake
 
 - **Endpoint**: `ws://127.0.0.1:8000/ws/speech`
-- **Authentication**:
-  - When `AUTH_REQUIRED=true`, clients must append an HS256 JWT access token as a query parameter:
-    `ws://127.0.0.1:8000/ws/speech?token=<ACCESS_TOKEN>`
-  - Unauthenticated connections are rejected with RFC 6455 close code `1008` (Policy Violation).
-  - When `AUTH_REQUIRED=false` (default in dev), no query parameter is needed.
+- **In-Frame Authentication**:
+  - In Phase 9+, authentication is performed via the initial `"start"` JSON text frame using the `auth_token` field (RFC 7515 HS256 JWT).
+  - Passing authentication tokens via URL query parameters (`?token=...`) is deprecated and removed to prevent credential exposure in web server logs, proxy access logs, and browser histories.
+  - When `AUTH_REQUIRED=true`:
+    - The `"start"` message frame MUST contain a valid JWT in `auth_token`.
+    - Omitting `auth_token` or supplying an invalid/expired token results in an `AUTH_REQUIRED` or `AUTH_FAILED` error frame, followed by immediate connection closure with RFC 6455 close code `1008` (Policy Violation).
+  - When `AUTH_REQUIRED=false` (development mode):
+    - Supplying `auth_token` associates the session with the authenticated user and persists history.
+    - Omitting `auth_token` runs the session anonymously: speech recognition and LLM events function normally, but persistence is completely bypassed (no database records are created for anonymous sessions).
 
 ---
 
@@ -28,7 +32,8 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      "type": "start",
      "sample_rate": 16000,
      "encoding": "pcm_s16le",
-     "language_hint": null
+     "language_hint": null,
+     "auth_token": "<HS256_JWT_ACCESS_TOKEN>"
    }
    ```
    - `sample_rate`: Sample rate in Hz (default: `16000`).
@@ -37,6 +42,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      - Indic languages (`"hi"`, `"bn"`, `"mr"`, `"ta"`, `"te"`, etc.): routes dynamically to IndicConformer-600m.
      - Global languages (`"en"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`): routes dynamically to SenseVoiceSmall.
      - When `null`: routes according to Spoken LID detection (if confidence $\ge$ threshold) or falls back to SenseVoice default.
+   - `auth_token`: Optional (or mandatory if `AUTH_REQUIRED=true`) HS256 JWT access token acquired from `POST /api/auth/login` or `POST /api/auth/register`.
 
 2. **Binary Audio Frames**:
    Continuous binary chunks of raw PCM16 mono audio (e.g. 512 samples / 1024 bytes per chunk at 16kHz).
@@ -139,15 +145,13 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
      }
    }
    ```
-    *(RETRACTED: Phase 8c benchmark figures citing confidence 0.85, 28 ms, or 78 ms are RETRACTED. Their exact origin is not conclusively identified; candidates are the legacy router constant in src/backend/asr/router.py (sv_confidence = 0.85), test doubles in tests/test_doubles.py (FakeSenseVoiceEngine simulated_processing_ms = 28.0), or a client run that may have hit a stale server process. Real neural processing measured on live server in Phase 8e is 407 ms - 1658 ms on host CPU, and confidence is strictly null per Phase 1 specification.)*
-   *(Audio Sample Disclosure: `tests/samples/english_speech_16k.wav` is synthetic audio generated via TTS synthesis, not human speech. It is used strictly for stream protocol regression testing, never as evidence of human ASR accuracy.)*
 
    **Multi-segment VAD Segmentation & Streaming Semantics**:
    - If the user speaks multiple phrases separated by pauses longer than the VAD silence threshold (`silence_timeout_ms = 700ms`), or if un-transcribed audio is flushed at connection close / `stop` frame, the VAD segmenter splits the input stream into distinct utterances.
    - **Each segment produces its own separate `speech_result` event**, followed immediately by its downstream LLM turn.
    - Clients receiving continuous audio streams must NOT expect a single monolithic `speech_result` for an entire multi-utterance session. Each utterance segment has its own `debug.segment_index`, `debug.segment_bytes`, and `debug.segment_duration_s`.
 
-5. **RAG Citations (`rag_sources`)**:
+6. **RAG Citations (`rag_sources`)**:
    Emitted when a knowledge query retrieves grounded document chunks from the local vector index:
    ```json
    {
@@ -162,7 +166,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-6. **LLM Token Delta (`llm_delta`)**:
+7. **LLM Token Delta (`llm_delta`)**:
    Emitted progressively as each generated token arrives from the local LLM server. Dispatched strictly after `speech_result`.
    ```json
    {
@@ -171,7 +175,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-7. **LLM Completion (`llm_done`)**:
+8. **LLM Completion (`llm_done`)**:
    Emitted once the LLM stream has finished, containing the full aggregated response text and any grounded citations:
    ```json
    {
@@ -187,7 +191,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    }
    ```
 
-8. **TTS Audio Stream Chunk (`tts_chunk` + Binary Frame)**:
+9. **TTS Audio Stream Chunk (`tts_chunk` + Binary Frame)**:
    Emitted as each sentence is synthesized by Indic Parler-TTS.
    Each chunk uses a deterministic **two-frame sequence**:
    1. **JSON Metadata Header**: A text JSON frame containing sentence metadata:
@@ -204,17 +208,17 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    - Sample rate: 44,100 Hz (44.1 kHz, mono).
    - Encoding: 16-bit signed integer linear PCM (`format: "wav"`).
 
-9. **TTS Synthesis Completion (`tts_done`)**:
-   Emitted once all synthesized sentences for the turn have finished streaming:
-   ```json
-   {
-     "type": "tts_done",
-     "total_chunks": 2,
-     "total_duration_ms": 3450.0
-   }
-   ```
+10. **TTS Synthesis Completion (`tts_done`)**:
+    Emitted once all synthesized sentences for the turn have finished streaming:
+    ```json
+    {
+      "type": "tts_done",
+      "total_chunks": 2,
+      "total_duration_ms": 3450.0
+    }
+    ```
 
-10. **Status Notice (`status`)**:
+11. **Status Notice (`status`)**:
     Emitted for non-fatal runtime notices, such as when a knowledge query falls back to direct chat due to missing vector indices:
     ```json
     {
@@ -224,7 +228,7 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
     }
     ```
 
-11. **Error Frame (`error`)**:
+12. **Error Frame (`error`)**:
     Emitted upon protocol violation, buffer overflow, or upstream/service error:
     ```json
     {
@@ -251,10 +255,11 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
     ```
     > **Note**: An `llm_unavailable` or `tts_unavailable` error keeps the WebSocket connection open so subsequent voice turns can still be transcribed.
 
-12. **Cancellation & Ordering Guarantees**:
+13. **Cancellation & Ordering Guarantees**:
     - `speech_result` is always dispatched BEFORE any LLM or TTS request is started and never waits on them.
     - Full event ordering: `speech_result` → `llm_delta...` → `llm_done` → `tts_chunk (JSON)` → `tts_chunk (binary)` ... → `tts_done`.
     - If the client disconnects or transmits a new `start` control frame while `llm_delta` or `tts_chunk` streams are in-flight, the server immediately cancels the active generation/synthesis task, closes upstream streams, and discards queued audio chunks.
+    - Non-blocking database turn persistence is dispatched asynchronously in a threadpool worker (`HistoryService.record_voice_turn`) strictly AFTER `speech_result` and `llm_done` are emitted. If the database is unreachable, the error is logged and swallowed; the WebSocket connection remains completely uninterrupted.
 
 ---
 
@@ -273,7 +278,13 @@ Any unknown message types received from the client are safely ignored.
    Audio chunks are processed through Silero VAD in 512-sample (32ms) frames with a 250ms pre-speech buffer. Speech ends after 700ms of sustained silence.
 2. **Buffer Limits**:
    Per-connection memory buffer is capped at **5 MB** (`WS_MAX_BUFFER_BYTES`). Exceeding this threshold triggers an immediate `BUFFER_OVERFLOW` error and buffer reset.
-3. **Resource Cleanup**:
+3. **Turn Rate Limiting**:
+   Sessions are capped at a maximum of **20 utterances per 60-second sliding window** (`RATE_LIMIT_UTTERANCES_PER_MINUTE`). Exceeding this threshold triggers a `RATE_LIMIT_EXCEEDED` error frame.
+4. **Turn Audio Duration Cap**:
+   Individual audio turns cannot exceed **30.0 seconds** (`MAX_AUDIO_DURATION_SECONDS`). Audio exceeding this limit is rejected with `AUDIO_DURATION_LIMIT_EXCEEDED`.
+5. **Zero Raw Audio Persistence**:
+   Raw audio bytes and PCM waveforms are NEVER stored in the database or persisted to disk. Only processed transcripts, acoustic tags, and latency metrics are retained.
+6. **Resource Cleanup**:
    Disconnects clean up segmenter state and in-memory buffers immediately.
-4. **Non-Blocking Inference**:
+7. **Non-Blocking Inference**:
    ASR and SER inference runs off the asyncio event loop via threadpools (`asyncio.to_thread`) bounded by an asynchronous semaphore (`INFERENCE_CONCURRENCY_LIMIT`).

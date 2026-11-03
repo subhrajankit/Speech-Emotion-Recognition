@@ -4,7 +4,7 @@ Loaded via pydantic-settings from environment variables and .env file.
 """
 
 from typing import List, Union
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     )
 
     # Server settings
+    APP_ENV: str = "development"
+    ENVIRONMENT: str = "development"
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     DEBUG: bool = False
@@ -34,8 +36,19 @@ class Settings(BaseSettings):
 
     # Security & Auth
     AUTH_REQUIRED: bool = False
+    REQUIRE_AUTH: bool = False
     JWT_SECRET: str = "voicesense-insecure-secret-key-change-in-prod"
     SESSION_TIMEOUT_MINUTES: int = 60
+
+    # Database settings
+    DATABASE_URL: str = "sqlite:///./database/dev.db"
+    STORE_TRANSCRIPTS: bool = True
+
+    # Rate limiting & Quotas
+    RATE_LIMIT_UTTERANCES_PER_MINUTE: int = 20
+    RATE_LIMIT_AUTH_PER_MINUTE: int = 10
+    MAX_UTTERANCE_DURATION_SECONDS: float = 30.0
+    MAX_RAG_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB limit
 
     # Ingestion & Audio limits
     MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB limit
@@ -104,6 +117,22 @@ class Settings(BaseSettings):
             # Split comma-separated string if provided
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        env = (self.APP_ENV or self.ENVIRONMENT or "").lower()
+        if env == "production":
+            insecure_defaults = {
+                "voicesense-insecure-secret-key-change-in-prod",
+                "senseai-dev-secret-key-change-in-production-32bytesmin",
+                "secret",
+                "changeme",
+            }
+            if not self.JWT_SECRET or self.JWT_SECRET in insecure_defaults or len(self.JWT_SECRET) < 32:
+                raise ValueError(
+                    "APP_ENV=production refuses to start with missing, default, or weak JWT_SECRET (must be >= 32 characters)."
+                )
+        return self
 
 
 settings = Settings()

@@ -19,6 +19,7 @@ from backend.app.api.health import router as health_router
 from backend.app.api.speech import router as speech_router
 from backend.app.api.prediction import router as prediction_router
 from backend.app.api.auth import router as auth_router
+from backend.app.api.history import router as history_router
 from backend.app.websocket.speech_socket import router as websocket_router
 
 
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(speech_router)
     app.include_router(prediction_router)
     app.include_router(auth_router)
+    app.include_router(history_router)
     app.include_router(websocket_router)
 
     return app

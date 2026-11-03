@@ -165,23 +165,41 @@ def test_websocket_buffer_limit_enforcement(client):
 
 
 def test_websocket_auth_required_rejection(client):
-    """Verifies that when AUTH_REQUIRED=true, unauthenticated sockets are rejected."""
+    """Verifies that when AUTH_REQUIRED=true, start frames without valid auth_token are rejected with 1008."""
     settings.AUTH_REQUIRED = True
     try:
-        with pytest.raises(WebSocketDisconnect) as excinfo:
-            with client.websocket_connect("/ws/speech"):
-                pass
-        assert excinfo.value.code == 1008
+        with client.websocket_connect("/ws/speech") as ws:
+            ws.send_json({
+                "type": "start",
+                "sample_rate": 16000,
+                "encoding": "pcm_s16le",
+                "language_hint": "en",
+            })
+            err = ws.receive_json()
+            assert err.get("type") == "error"
+            assert err.get("code") == "AUTH_REQUIRED"
+            with pytest.raises(WebSocketDisconnect) as excinfo:
+                ws.receive_json()
+            assert excinfo.value.code == 1008
     finally:
         settings.AUTH_REQUIRED = False
 
 
 def test_websocket_auth_required_accepted_with_token(client):
-    """Verifies that valid JWT token permits connection when AUTH_REQUIRED=true."""
+    """Verifies that valid JWT auth_token in start frame permits session when AUTH_REQUIRED=true."""
     settings.AUTH_REQUIRED = True
     try:
-        token = create_access_token(session_id="test_session_123")
-        with client.websocket_connect(f"/ws/speech?token={token}") as ws:
+        token = create_access_token(user_id="test_user_123", username="testuser")
+        with client.websocket_connect("/ws/speech") as ws:
+            ws.send_json({
+                "type": "start",
+                "sample_rate": 16000,
+                "encoding": "pcm_s16le",
+                "language_hint": "en",
+                "auth_token": token,
+            })
+            ready = ws.receive_json()
+            assert ready.get("type") == "ready"
             ws.send_json({"type": "ping"})
             pong = ws.receive_json()
             assert pong.get("type") == "pong"

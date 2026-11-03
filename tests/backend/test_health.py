@@ -28,7 +28,8 @@ def test_health_check_structure(client):
     assert components.get("rag") in ("ok", "no_index", "unavailable")
     # Phase 8: TTS reports real status ('ok', 'not_loaded', 'unavailable', or 'disabled')
     assert components.get("tts") in ("ok", "not_loaded", "unavailable", "disabled")
-    assert components.get("db") == "not_configured"
+    # Phase 9: DB reports 'ok', 'unavailable', or 'not_configured'
+    assert components.get("db") in ("ok", "unavailable", "not_configured")
 
 
     # Details

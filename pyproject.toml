@@ -13,6 +13,8 @@ dependencies = [
     "soundfile>=0.12.1",
     "onnxruntime>=1.17.0",
     "pydantic>=2.6.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +37,7 @@ markers = [
     "model: marks tests that require full model weights or heavy deep learning dependencies",
     "unit: marks fast unit tests",
     "integration: marks multi-component integration tests",
+    "postgres: marks tests that require a live PostgreSQL instance",
 ]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

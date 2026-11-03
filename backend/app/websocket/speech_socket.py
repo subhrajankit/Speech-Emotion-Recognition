@@ -1,19 +1,27 @@
 """
 WebSocket speech streaming endpoint for VoiceSense AI.
 Implements WebSocket protocol v1 with server-side VAD segmentation,
-non-blocking inference, per-connection buffer limits, keepalives, and auth gating.
+non-blocking inference, per-connection buffer limits, keepalives,
+in-frame JWT authentication, rate limiting, and fault-isolated history persistence.
 """
 
 import asyncio
 import json
 import logging
+import uuid
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from ai.preprocessing.vad import SileroVAD, VADSpeechSegmenter
 from backend.app.core.config import settings
 from backend.app.core.security import verify_access_token, AuthenticationError
+from backend.app.core.rate_limiter import (
+    session_rate_limiter,
+    UtteranceRateLimitExceeded,
+    AudioDurationLimitExceeded,
+)
 from backend.app.services.speech_service import speech_service
+from backend.app.services.history_service import history_service
 from backend.app.services.llm_service import (
     llm_service,
     LLMError,
@@ -27,7 +35,6 @@ from backend.app.services.rag_service import rag_service
 from backend.app.services.tts_service import tts_service, TTSError
 
 logger = logging.getLogger("voicesense.websocket")
-
 
 router = APIRouter(tags=["websocket"])
 
@@ -52,18 +59,19 @@ async def safe_send_json(websocket: WebSocket, data: Dict[str, Any]) -> bool:
 
 async def handle_llm_turn(
     websocket: WebSocket,
+    session_id: str,
+    user_id: Optional[str],
     transcript: str,
     emotion: Optional[str],
     language: Optional[str],
     conversation_history: List[Dict[str, str]],
+    speech_payload: Dict[str, Any],
+    audio_duration_ms: Optional[float] = None,
 ):
     """
     Invokes LLM reasoning strictly AFTER speech_result has been sent.
     Streams llm_delta tokens and emits llm_done upon completion.
-    On failure, emits {"type": "error", "code": "llm_unavailable", "message": ...}
-    and keeps the socket open.
-    Supports clean cancellation via asyncio.CancelledError when a new 'start'
-    or client disconnect occurs.
+    Finally triggers asynchronous, fault-isolated history persistence.
     """
     transcript_clean = transcript.strip() if transcript else ""
     if not transcript_clean:
@@ -94,6 +102,7 @@ async def handle_llm_turn(
     )
 
     full_response_parts: List[str] = []
+    full_text = ""
     try:
         stream = await llm_service.generate(
             messages=messages,
@@ -133,7 +142,6 @@ async def handle_llm_turn(
                     language=language,
                     emotion=emotion,
                 ):
-                    # 1. JSON metadata header frame
                     header_sent = await safe_send_json(websocket, {
                         "type": "tts_chunk",
                         "index": tts_chunk.sentence_index,
@@ -144,7 +152,6 @@ async def handle_llm_turn(
                     if not header_sent:
                         return
 
-                    # 2. Binary audio frame (self-contained 16-bit PCM WAV)
                     try:
                         await websocket.send_bytes(tts_chunk.audio)
                     except (WebSocketDisconnect, RuntimeError):
@@ -204,6 +211,19 @@ async def handle_llm_turn(
             "code": "llm_unavailable",
             "message": f"LLM error: {e}",
         })
+    finally:
+        # Phase 9: Persistence runs AFTER speech_result (and llm_done) are sent, off the event loop
+        # Non-blocking: background threadpool worker swallows errors
+        asyncio.create_task(
+            history_service.record_voice_turn(
+                session_id=session_id,
+                user_id=user_id,
+                speech_result_data=speech_payload,
+                llm_response_text=full_text if full_text else None,
+                rag_sources=rag_turn.cited_docs if (rag_turn.retrieval_performed and rag_turn.cited_docs) else None,
+                audio_duration_ms=audio_duration_ms,
+            )
+        )
 
 
 @router.websocket("/ws/speech")
@@ -211,7 +231,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     """
     WebSocket voice endpoint:
     Client -> server:
-      {"type":"start","sample_rate":16000,"encoding":"pcm_s16le","language_hint":null}
+      {"type":"start","sample_rate":16000,"encoding":"pcm_s16le","language_hint":null,"auth_token":null}
       binary frames of PCM16 mono audio
       {"type":"stop"}
     Server -> client:
@@ -220,29 +240,13 @@ async def speech_websocket_endpoint(websocket: WebSocket):
       {"type":"speech_result", ...SpeechResult}
       {"type":"error","code":"...","message":"..."}
     """
-    # 1. Auth gating if AUTH_REQUIRED is enabled
-    if settings.AUTH_REQUIRED:
-        token = websocket.query_params.get("token")
-        if not token:
-            await websocket.close(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Authentication required: missing token query parameter"
-            )
-            return
-
-        try:
-            verify_access_token(token)
-        except AuthenticationError as e:
-            await websocket.close(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason=f"Authentication failed: {e}"
-            )
-            return
-
+    # Accept connection; JWT is verified upon receiving the "start" message frame
     await websocket.accept()
 
     # Per-connection session state
     is_started = False
+    session_id: str = f"sess_{uuid.uuid4().hex[:12]}"
+    user_id: Optional[str] = None
     sample_rate = 16000
     encoding = "pcm_s16le"
     language_hint: Optional[str] = None
@@ -283,7 +287,6 @@ async def speech_websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             message = await websocket.receive()
-            msg_type = message.get("type")
 
             # Handle text JSON control messages
             if "text" in message and message["text"]:
@@ -304,9 +307,61 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                     await websocket.send_json({"type": "pong"})
                     continue
 
-                # Start streaming session (cancels any in-flight LLM stream)
+                # Start streaming session
                 if action == "start":
                     await cancel_active_llm()
+
+                    # 1. In-frame JWT authentication verification
+                    auth_token = payload.get("auth_token")
+                    if settings.AUTH_REQUIRED:
+                        if not auth_token:
+                            await safe_send_json(websocket, {
+                                "type": "error",
+                                "code": "AUTH_REQUIRED",
+                                "message": "Authentication required: valid auth_token must be provided in start message.",
+                            })
+                            await websocket.close(
+                                code=status.WS_1008_POLICY_VIOLATION,
+                                reason="Authentication required"
+                            )
+                            return
+
+                        try:
+                            token_claims = verify_access_token(auth_token)
+                            user_id = token_claims.get("sub")
+                        except AuthenticationError as e:
+                            await safe_send_json(websocket, {
+                                "type": "error",
+                                "code": "AUTH_FAILED",
+                                "message": f"Authentication failed: {e}",
+                            })
+                            await websocket.close(
+                                code=status.WS_1008_POLICY_VIOLATION,
+                                reason="Authentication failed"
+                            )
+                            return
+                    else:
+                        # Optional authentication in development mode
+                        if auth_token:
+                            try:
+                                token_claims = verify_access_token(auth_token)
+                                user_id = token_claims.get("sub")
+                            except AuthenticationError as e:
+                                await safe_send_json(websocket, {
+                                    "type": "error",
+                                    "code": "AUTH_FAILED",
+                                    "message": f"Authentication failed: {e}",
+                                })
+                                await websocket.close(
+                                    code=status.WS_1008_POLICY_VIOLATION,
+                                    reason="Authentication failed"
+                                )
+                                return
+                        else:
+                            # Anonymous user: nothing persisted
+                            user_id = None
+
+                    session_id = payload.get("session_id") or session_id
                     sample_rate = int(payload.get("sample_rate", 16000))
                     encoding = payload.get("encoding", "pcm_s16le")
                     language_hint = payload.get("language_hint")
@@ -336,7 +391,21 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         was_in_speech = False
 
                     if flushed_audio and len(flushed_audio) >= 1024:
+                        # Rate limit check on utterance count
+                        try:
+                            session_rate_limiter.record_utterance(session_id)
+                        except UtteranceRateLimitExceeded as rle:
+                            await safe_send_json(websocket, {
+                                "type": "error",
+                                "code": "RATE_LIMIT_EXCEEDED",
+                                "message": str(rle)
+                            })
+                            is_started = False
+                            continue
+
                         vad_segment_count += 1
+                        duration_ms = round((len(flushed_audio) / (sample_rate * 2)) * 1000.0, 1)
+
                         try:
                             speech_res = await speech_service.transcribe_pcm16_bytes(
                                 pcm_bytes=flushed_audio,
@@ -349,7 +418,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             speech_payload["debug"].update({
                                 "segment_index": vad_segment_count,
                                 "segment_bytes": len(flushed_audio),
-                                "segment_duration_s": round(len(flushed_audio) / (sample_rate * 2), 2),
+                                "segment_duration_s": round(duration_ms / 1000.0, 2),
                                 "session_total_audio_bytes": session_total_audio_bytes,
                                 "flushed_on_stop": True,
                             })
@@ -361,10 +430,14 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             active_llm_task = asyncio.create_task(
                                 handle_llm_turn(
                                     websocket=websocket,
+                                    session_id=session_id,
+                                    user_id=user_id,
                                     transcript=speech_res.transcript,
                                     emotion=speech_res.emotion,
                                     language=speech_res.language,
                                     conversation_history=conversation_history,
+                                    speech_payload=speech_payload,
+                                    audio_duration_ms=duration_ms,
                                 )
                             )
                         except Exception as e:
@@ -389,7 +462,6 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                 chunk = message["bytes"]
 
                 if not is_started:
-                    # Auto-start or request start frame
                     await websocket.send_json({
                         "type": "error",
                         "code": "NOT_STARTED",
@@ -400,11 +472,30 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                 # Enforce per-connection buffer limits
                 total_accumulated_bytes += len(chunk)
                 session_total_audio_bytes += len(chunk)
+
                 if total_accumulated_bytes > settings.WS_MAX_BUFFER_BYTES:
                     await websocket.send_json({
                         "type": "error",
                         "code": "BUFFER_OVERFLOW",
                         "message": f"Connection buffer limit ({settings.WS_MAX_BUFFER_BYTES} bytes) exceeded."
+                    })
+                    segmenter.reset()
+                    total_accumulated_bytes = 0
+                    was_in_speech = False
+                    continue
+
+                # Validate audio duration cap via rate limiter
+                try:
+                    session_rate_limiter.validate_audio_chunk(
+                        accumulated_bytes=total_accumulated_bytes,
+                        sample_rate=sample_rate,
+                        sample_width_bytes=2,
+                    )
+                except AudioDurationLimitExceeded as adle:
+                    await safe_send_json(websocket, {
+                        "type": "error",
+                        "code": "AUDIO_DURATION_LIMIT_EXCEEDED",
+                        "message": str(adle),
                     })
                     segmenter.reset()
                     total_accumulated_bytes = 0
@@ -433,6 +524,18 @@ async def speech_websocket_endpoint(websocket: WebSocket):
 
                     total_accumulated_bytes = 0
                     vad_segment_count += 1
+                    duration_ms = round((len(completed_utterance) / (sample_rate * 2)) * 1000.0, 1)
+
+                    # Utterance rate limit check
+                    try:
+                        session_rate_limiter.record_utterance(session_id)
+                    except UtteranceRateLimitExceeded as rle:
+                        await safe_send_json(websocket, {
+                            "type": "error",
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": str(rle)
+                        })
+                        continue
 
                     # Run inference off the event loop
                     try:
@@ -447,7 +550,7 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         speech_payload["debug"].update({
                             "segment_index": vad_segment_count,
                             "segment_bytes": len(completed_utterance),
-                            "segment_duration_s": round(len(completed_utterance) / (sample_rate * 2), 2),
+                            "segment_duration_s": round(duration_ms / 1000.0, 2),
                             "session_total_audio_bytes": session_total_audio_bytes,
                             "flushed_on_stop": False,
                         })
@@ -459,10 +562,14 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                         active_llm_task = asyncio.create_task(
                             handle_llm_turn(
                                 websocket=websocket,
+                                session_id=session_id,
+                                user_id=user_id,
                                 transcript=speech_res.transcript,
                                 emotion=speech_res.emotion,
                                 language=speech_res.language,
                                 conversation_history=conversation_history,
+                                speech_payload=speech_payload,
+                                audio_duration_ms=duration_ms,
                             )
                         )
                     except Exception as e:
@@ -473,12 +580,10 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             "message": str(e)
                         })
 
-
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected cleanly.")
     except Exception as e:
         logger.error(f"Unexpected WebSocket error: {e}")
     finally:
-        # Clean up per-connection state and cancel in-flight LLM stream
         await cancel_active_llm()
         segmenter.reset()
