@@ -12,7 +12,7 @@
 
 ### Phase 8 Truthfulness Statement:
 - **Plumbing verified with test doubles**: **[VERIFIED]** (All unit, service, and WebSocket integration tests pass with mocked/injected doubles).
-- **Real synthesis verified standalone**: **[VERIFIED]** (Direct synthesis runs inside `.venv-tts` via `scripts/measure_clamped_tts.py`. **Correction:** The earlier claim of RTF 1.04–1.28 does **NOT** reproduce. Standalone clamped runs recorded in `docs/deployment/runs/tts_llama_stopped.log` yield RTF **2.65–5.12** in float16 and **2.73–2.94** in bfloat16. With `llama-server` running (`docs/deployment/runs/tts_llama_running.log`), clamped RTF degrades to **4.52–8.32** in float16 and **5.95–8.03** in bfloat16).
+- **Real synthesis verified standalone**: **[VERIFIED]** (Direct synthesis runs inside `.venv-tts` via `scripts/measure_clamped_tts.py`. **Correction:** The earlier claim of RTF 1.04–1.28 does **NOT** reproduce. Standalone clamped runs recorded in `docs/deployment/runs/tts_llama_stopped.txt` yield RTF **2.65–5.12** in float16 and **2.73–2.94** in bfloat16. With `llama-server` running (`docs/deployment/runs/tts_llama_running.txt`), clamped RTF degrades to **4.52–8.32** in float16 and **5.95–8.03** in bfloat16).
 - **Full real end-to-end on this 4 GB GPU**: **[FAILED - SYSTEM MEMORY EXHAUSTION]** (Child worker process in `.venv-tts` fails during model checkpoint load with `OSError: The paging file is too small for this operation to complete. (os error 1455)` when loaded alongside resident uvicorn and llama-server; safely handled by typed `tts_unavailable` error event).
 
 ### Mandatory Configuration Invariant:
@@ -31,27 +31,27 @@ All metrics below are measured real executions on the target machine with wall-c
 
 | Configuration | Loaded Models | Device | Dtype | Input Text | Audio Dur (s) | TTFC (s) | Total Time (s) | RTF | Peak VRAM (MiB) | Status | Benchmark Run Script |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TTS Standalone (Unconstrained)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 5.84 | - | 33.45 | **5.73** | 2,647 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 1.24 | - | 6.35 | **5.12** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | HI (5 words) | 2.03 | - | 6.24 | **3.07** | 2,269 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (14 words) | 5.70 | - | 15.08 | **2.65** | 2,709 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | HI (14 words) | 5.41 | - | 14.33 | **2.65** | 2,555 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | EN (5 words) | 1.29 | - | 3.80 | **2.94** | 2,194 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | HI (5 words) | 2.68 | - | 7.66 | **2.86** | 2,330 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | EN (14 words) | 4.86 | - | 13.28 | **2.73** | 2,490 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | HI (14 words) | 5.12 | - | 14.32 | **2.80** | 2,580 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Streaming (play_steps=12)**| Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 1.08 | **0.68** | 5.71 | **5.28** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **TTS Streaming (play_steps=12)**| Parler-TTS alone (llama stopped) | GPU | float16 | HI (5 words) | 2.11 | **0.76** | 10.47 | **4.96** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (5 words) | 1.10 | - | 8.65 | **7.86** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (5 words) | 2.05 | - | 9.26 | **4.52** | 3,731 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (14 words) | 5.70 | - | 47.43 | **8.32** | 3,036 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (14 words) | 6.90 | - | 52.72 | **7.64** | 3,026 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | bfloat16 | EN (5 words) | 1.34 | - | 7.97 | **5.95** | 2,539 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | bfloat16 | HI (5 words) | 2.90 | - | 23.30 | **8.03** | 2,704 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent Streaming (p=12)**| Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (5 words) | 1.18 | **1.13** | 11.78 | **9.98** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **Concurrent Streaming (p=12)**| Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (5 words) | 2.19 | **1.42** | 21.24 | **9.70** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
-| **CPU Standalone (12 threads)** | Parler-TTS alone (llama stopped) | CPU | float32 | EN (5 words) | 1.31 | - | 23.06 | **17.60** | - | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.log` |
-| **CPU Concurrent (12 threads)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | 1.50 | - | 36.70 | **24.46** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.log` |
+| **TTS Standalone (Unconstrained)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 5.84 | - | 33.45 | **5.73** | 2,647 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 1.24 | - | 6.35 | **5.12** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | HI (5 words) | 2.03 | - | 6.24 | **3.07** | 2,269 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | EN (14 words) | 5.70 | - | 15.08 | **2.65** | 2,709 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | float16 | HI (14 words) | 5.41 | - | 14.33 | **2.65** | 2,555 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | EN (5 words) | 1.29 | - | 3.80 | **2.94** | 2,194 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | HI (5 words) | 2.68 | - | 7.66 | **2.86** | 2,330 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | EN (14 words) | 4.86 | - | 13.28 | **2.73** | 2,490 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Standalone (Clamped)** | Parler-TTS alone (llama stopped) | GPU | bfloat16 | HI (14 words) | 5.12 | - | 14.32 | **2.80** | 2,580 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Streaming (play_steps=12)**| Parler-TTS alone (llama stopped) | GPU | float16 | EN (5 words) | 1.08 | **0.68** | 5.71 | **5.28** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **TTS Streaming (play_steps=12)**| Parler-TTS alone (llama stopped) | GPU | float16 | HI (5 words) | 2.11 | **0.76** | 10.47 | **4.96** | 2,185 | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (5 words) | 1.10 | - | 8.65 | **7.86** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (5 words) | 2.05 | - | 9.26 | **4.52** | 3,731 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (14 words) | 5.70 | - | 47.43 | **8.32** | 3,036 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (14 words) | 6.90 | - | 52.72 | **7.64** | 3,026 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | bfloat16 | EN (5 words) | 1.34 | - | 7.97 | **5.95** | 2,539 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent (Clamped)** | Qwen3-1.7B + Parler-TTS (llama running) | GPU | bfloat16 | HI (5 words) | 2.90 | - | 23.30 | **8.03** | 2,704 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent Streaming (p=12)**| Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | EN (5 words) | 1.18 | **1.13** | 11.78 | **9.98** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **Concurrent Streaming (p=12)**| Qwen3-1.7B + Parler-TTS (llama running) | GPU | float16 | HI (5 words) | 2.19 | **1.42** | 21.24 | **9.70** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
+| **CPU Standalone (12 threads)** | Parler-TTS alone (llama stopped) | CPU | float32 | EN (5 words) | 1.31 | - | 23.06 | **17.60** | - | [VERIFIED] | `docs/deployment/runs/tts_llama_stopped.txt` |
+| **CPU Concurrent (12 threads)** | Qwen3 (GPU) + Parler (CPU) | CPU | float32 | EN (5 words) | 1.50 | - | 36.70 | **24.46** | 3,508 | [VERIFIED] | `docs/deployment/runs/tts_llama_running.txt` |
 
 
 *Generated WAV Artifacts (Verified with `ls` on Disk in `scripts/`):*

@@ -1,125 +1,88 @@
-# SenseAI Setup & Local Execution Guide (Phase 1)
+# VoiceSense AI — Local Setup Guide
 
-This guide walks you through setting up and running the **Phase 1 Minimum Voice Loop** (SenseVoiceSmall ASR → llama.cpp / Qwen3-1.7B → Indic Parler-TTS) locally on Windows and Linux.
-
----
-
-## Prerequisites
-
-1. **Python**: 3.10 to 3.12 (or 3.13)
-2. **Node.js**: v18+ and npm
-3. **Hardware**: 
-   - **Recommended**: NVIDIA GPU (≥ 4GB VRAM, e.g. RTX 2050/3050) with CUDA 12+
-   - **Supported**: CPU-only mode (quantized inference)
+Verified on Windows 11 (`Python 3.13.14`, `Node.js` frontend toolchain); Linux/WSL CI steps match [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (`Ubuntu` CI-lite verified; full local Linux ML runtime unverified on a live Linux workstation).
 
 ---
 
-## 1. Local LLM Setup (llama.cpp)
+## 1. Python Environments
 
-SenseAI connects to a locally hosted `llama.cpp` server exposing OpenAI-compatible endpoints (`/v1/chat/completions`) bound strictly to `127.0.0.1:8080`.
+VoiceSense AI keeps two virtual environments separated by dependency weight:
 
-### Option A: Using Pre-built llama.cpp Binary (Windows / Linux)
-1. Download the latest `llama-server` binary from [llama.cpp releases](https://github.com/ggerganov/llama.cpp/releases).
-2. Download the Qwen3-1.7B (or Qwen2.5-1.5B) Q4_K_M GGUF model:
-   ```bash
-   mkdir -p models
-   # Example download via huggingface-cli:
-   huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir ./models
-   ```
-3. Start the llama.cpp server:
-   - **Windows (PowerShell)**:
+1. **CI-Lite Environment (`.venv-ci` — Fast, No ML Weights/Torch):**
+   Used for API, auth, SQLite database, WebSocket protocol, and mocked/double tests.
+   - **Windows (PowerShell):**
      ```powershell
-     .\llama-server.exe -m .\models\qwen2.5-1.5b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8080 -ngl 33 -c 4096
+     python -m venv .venv-ci
+     .\.venv-ci\Scripts\python.exe -m pip install --upgrade pip
+     .\.venv-ci\Scripts\python.exe -m pip install -r requirements-ci.txt
      ```
-   - **Linux**:
+   - **Linux / WSL *(local Linux runtime unverified; matches CI)*:**
      ```bash
-     ./llama-server -m ./models/qwen2.5-1.5b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8080 -ngl 33 -c 4096
+     python3 -m venv .venv-ci
+     .venv-ci/bin/python -m pip install --upgrade pip
+     .venv-ci/bin/python -m pip install -r requirements-ci.txt
      ```
 
+2. **Full ML Environment (`.venv` — ASR, RAG Embeddings, Training):**
+   - **Windows (PowerShell):**
+     ```powershell
+     python -m venv .venv
+     .\.venv\Scripts\python.exe -m pip install -r requirements/runtime.txt -r requirements/ml.txt -r requirements/dev.txt
+     ```
+   - **Linux / WSL *(unverified locally)*:**
+     Install OS libs (`ffmpeg`, `libsndfile1`) if `soundfile`/`torchaudio` requires them, then install `requirements/runtime.txt`, `requirements/ml.txt`, and `requirements/dev.txt`.
+
+> [!NOTE]
+> **Windows Smart App Control (Build `26200.9711`) Note:** On hardened Windows hosts, SAC can block unsigned native DLLs such as `onnxruntime_providers_cuda.dll` or native `faiss` binaries. The backend automatically degrades to CPU execution and `NumpyVectorIndex` without crashing.
 
 ---
 
-## 2. Backend Setup (FastAPI)
+## 2. Environment Configuration
 
-### Step 2.1: Python Virtual Environment
-- **Windows (PowerShell)**:
-  ```powershell
-  python -m venv .venv
-  .\.venv\Scripts\Activate.ps1
-  ```
-- **Linux**:
-  ```bash
-  python3 -m venv .venv
-  source .venv/bin/activate
-  ```
-
-### Step 2.2: Install Dependencies
-```bash
-pip install -r src/backend/requirements.txt
+Copy the environment template and adjust only what you need:
+```powershell
+Copy-Item .env.example .env
 ```
+Key defaults for local development:
+- `HOST=127.0.0.1`, `PORT=8000`
+- `DATABASE_URL=sqlite:///./database/dev.db`
+- `LAZY_LOAD_MODELS=true`, `PRELOAD_DEFAULT_ENGINE=false`
+- `AUTH_REQUIRED=false` (set `AUTH_REQUIRED=true` + strong `JWT_SECRET` for authenticated mode)
+- `TTS_ENABLED=false` (recommended off; see [`docs/deployment/tts-benchmark-rtx2050.md`](./deployment/tts-benchmark-rtx2050.md))
+- `HF_TOKEN=` (set in environment at runtime only if downloading gated `ai4bharat/indic-conformer-600m-multilingual`)
 
-For GPU acceleration (PyTorch with CUDA 12.1+):
-```bash
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install funasr transformers soundfile
-```
+---
 
-### Step 2.3: Environment Configuration
-Copy the development environment file:
-```bash
-cp config/development/.env.example .env
-```
-*(Or on Windows PowerShell: `Copy-Item config\development\.env.example .env`)*
+## 3. Database Initialization (SQLite Dev)
 
-### Step 2.4: Launch Backend Server
-```bash
-python -m uvicorn src.backend.main:app --host 127.0.0.1 --port 8000 --reload
-```
-Verify health:
-```bash
-curl http://127.0.0.1:8000/health
+Ensure local database migrations are applied using Alembic:
+```powershell
+.\.venv-ci\Scripts\alembic.exe upgrade head
 ```
 
 ---
 
-## 3. Frontend Setup (React + Vite)
+## 4. Optional Local LLM (`llama.cpp`) & RAG Index
 
-### Step 3.1: Install Dependencies
-```bash
-cd src/frontend
-npm install
-```
-
-### Step 3.2: Launch Frontend Development Server
-```bash
-npm run dev
-```
-The interface will be live at: `http://127.0.0.1:5173`.
+1. **Local LLM Server (Optional):** Run `llama-server` serving `Qwen3-1.7B` (`Q4_K_M` GGUF) on `127.0.0.1:8080`. If omitted, speech perception and emotion tags still work while assistant generation reports `llm_unavailable`.
+2. **Vector Index (Optional):** Build the local sample RAG index (`data/documents` -> `data/index`):
+   ```powershell
+   .\.venv\Scripts\python.exe -m rag.ingestion --docs data/documents --index-dir data/index
+   ```
 
 ---
 
-## 4. How to Test Manually (Smoke Test)
+## 5. Start Backend & Frontend
 
-1. Open `http://127.0.0.1:5173` in Chrome or Edge.
-2. Check the status badge at top right: should indicate **127.0.0.1:8000 Online**.
-3. Click the glowing **Microphone Button** (browser will prompt for microphone permission).
-4. Speak a clear English sentence (e.g.: *"Hello, what is the capital of France?"*).
-5. Click the button again to signal end of utterance.
-6. Observe:
-   - Status changes to **Processing speech...**.
-   - Your speech appears in the **User Speech** card.
-   - The LLM text response appears in the **Assistant Speech** card.
-   - The returned WAV audio automatically plays through your speakers.
-   - The latency bar reports component timings (`ASR`, `LLM`, `TTS`, and `Roundtrip`).
-
----
-
-## 5. Expected Latency Benchmarks (Roundtrip)
-
-| Hardware Setup | ASR (SenseVoice) | LLM (Qwen3-1.7B) | TTS (Parler-TTS) | Total Roundtrip |
-| :--- | :--- | :--- | :--- | :--- |
-| **NVIDIA RTX 3080/4070 (GPU)** | ~80–120 ms | ~100–160 ms | ~200–300 ms | **~450–650 ms** |
-| **Entry GPU (RTX 2050 / 4GB VRAM)** | ~100–150 ms | ~130–190 ms | ~260–380 ms | **~550–750 ms** |
-| **Mid-tier GPU (RTX 3060/4060)**| ~120–160 ms | ~140–220 ms | ~300–450 ms | **~600–850 ms** |
-| **Modern 8-Core CPU** | ~280–400 ms | ~250–450 ms | ~600–900 ms | **~1150–1750 ms** |
-
+1. **Start Backend** (single worker + explicit default keepalive flags recommended for lazy cold loading):
+   ```powershell
+   .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1 --ws-ping-interval 20 --ws-ping-timeout 20
+   ```
+2. **Install & Start Frontend:**
+   ```powershell
+   cd frontend
+   npm ci
+   npm run dev
+   ```
+3. **Verify Health:** Open `http://127.0.0.1:8000/api/health` (REST) and `http://127.0.0.1:5173` (UI).
+4. **Walkthrough:** Follow the step-by-step live demo in [`docs/DEMO.md`](./DEMO.md).

@@ -54,4 +54,7 @@ python -m ai.training.train --config ai/training/config/crema_d_smoke.yaml --smo
 |---|---|---|---|---|---|---|---|
 | **Wav2Vec2 + MLP Head** | CREMA-D (Held-out Test) | *NOT YET MEASURED* | *NOT YET MEASURED* | *NOT YET MEASURED* | *NOT YET MEASURED* | — | Awaiting full audio download |
 | **SenseVoiceSmall (Zero-Shot)** | CREMA-D (Held-out Test) | *NOT YET MEASURED* | *NOT YET MEASURED* | *NOT YET MEASURED* | *NOT YET MEASURED* | — | Awaiting full audio download |
-| **Smoke Run Checkpoint** | Synthetic Manifest | 0.2500 | 0.2500 | 0.1000 | 0.0625 | 2026-10-25 | `smoke test, not a result` |
+| **Smoke Run Checkpoint** | Synthetic Manifest | 0.4000 | 0.1667 | 0.2000 | 0.4800 | 2026-10-25 | `smoke test, not a result` |
+
+> [!NOTE]
+> Metrics for `run_20261025_193120` were reconciled from [`docs/training/runs/run_20261025_193120/metrics.json`](./runs/run_20261025_193120/metrics.json) (an earlier draft erroneously listed `0.2500 / 0.2500 / 0.1000 / 0.0625`). Hardware estimates in Section 2 remain **unverified estimates** until real CREMA-D audio is downloaded and measured. See [`experiments.md`](./experiments.md) for the full experiment log and reproducibility checklist.

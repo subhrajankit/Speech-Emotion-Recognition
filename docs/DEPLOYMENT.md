@@ -1,186 +1,57 @@
-# SenseAI Voice Assistant — Deployment Guide (Phase 12)
+# VoiceSense AI — Deployment & Operations Guide
 
-This guide covers deployment strategies for the SenseAI Voice Assistant across three tiers:
-1. **Local Development** (Bare-metal processes)
-2. **Single-Machine Demo Deployment** (All-in-one Docker Compose)
-3. **GPU-Server Production Architecture** (Decoupled CPU web/backend tier + dedicated GPU model-serving host)
+> For container architecture, compose files, and Docker environment tables, see [`docs/deployment/docker.md`](./deployment/docker.md). For local setup and Python environments, see [`docs/SETUP.md`](./SETUP.md).
 
 ---
 
-## 1. Local Development (Bare Metal)
+## 1. Local Single-Host Deployment (Verified on Windows)
 
-Best for active code editing, testing, and debugging.
+VoiceSense AI runs cleanly with all local services bound to `127.0.0.1` only:
 
-### Step 1: Start LLM Inference Server (llama.cpp)
-```bash
-# Windows
-.\llama-server.exe -m .\models\qwen3-1.7b.gguf --host 127.0.0.1 --port 8080 -ngl 33 -c 4096
-
-# Linux / macOS
-./llama-server -m ./models/qwen3-1.7b.gguf --host 127.0.0.1 --port 8080 -ngl 33 -c 4096
-```
-
-### Environment Architecture (Phase 8b Reality Check)
-The local backend operates with dual virtual environments to eliminate dependency conflicts:
-1. **`.venv` (Main Backend, ASR & RAG)**: Houses FastAPI, Silero VAD, SenseVoiceSmall, IndicConformer, `sentence-transformers` (multilingual-e5-small), and `faiss-cpu`.
-2. **`.venv-tts` (Isolated TTS Worker)**: Houses `parler-tts` (`transformers<=4.46.1`) executed as an isolated subprocess worker via `backend/app/services/tts_worker.py`.
-
-*Hardware Note*: On 4 GB VRAM GPUs (e.g. RTX 2050 Mobile), `TTS_ENABLED=false` is configured as the default to prevent VRAM paging and memory contention with `llama-server`. See `docs/deployment/tts-benchmark-rtx2050.md`.
-
-### Step 2: Start FastAPI Backend
-```bash
-# Activate virtual environment
-source .venv/bin/activate  # Linux
-# .\.venv\Scripts\Activate.ps1  # Windows
-
-# Launch target modular backend
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-> **Note on Memory**: Stop the dev server before running model tests (memory). Heavy PyTorch test suites (like IndicConformer or SenseVoice) run alongside an active backend holding model weights can saturate commit charge and exhaust host memory.
-
-### Step 3: Start React Frontend
-```bash
-cd src/frontend
-npm run dev -- --host 127.0.0.1 --port 5173
-```
-
-Access the UI at `http://127.0.0.1:5173`.
-
----
-
-## 2. Single-Machine Demo Deployment (Docker Compose)
-
-Best for staging, client demonstrations, and self-hosted on-premise servers with an attached NVIDIA GPU.
-
-### Prerequisites
-- Docker Engine 24+ with Docker Compose v2
-- NVIDIA Container Toolkit (`nvidia-container-toolkit`) installed and configured with the Docker daemon if GPU acceleration is enabled.
-
-### Running with Docker Compose
-```bash
-# 1. Ensure production secrets are populated
-cp security/secrets.example/env.secrets.example .env
-chmod 600 .env
-
-# 2. Build and launch all services in detached mode
-docker compose -f docker-compose.prod.yml up -d --build
-
-# 3. View container logs
-docker compose -f docker-compose.prod.yml logs -f
-```
-
-### Verification
-```bash
-# Verify container health
-docker compose -f docker-compose.prod.yml ps
-
-# Execute operational health audit
-python monitoring/health-checks/check_health.py
-```
-
----
-
-## 3. GPU-Server Production Architecture (Decoupled Topology)
-
-In production environments with variable traffic, running all services on a single monolithic GPU instance is financially inefficient and operationally risky.
-
-### Decoupled Service Topology
-
-```text
-+-------------------------------------------------------------+
-|                      INTERNET INGRESS                       |
-|           Cloudflare / TLS Reverse Proxy (Port 443)         |
-+------------------------------+------------------------------+
-                               |
-                               ▼
-+-------------------------------------------------------------+
-|                TIER 1: WEB & PIPELINE HOST                  |
-|          (Low-Cost CPU Instance: 2-4 vCPUs, 8GB RAM)        |
-|                                                             |
-|   +--------------------------+  +-----------------------+   |
-|   |   Frontend Container     |  |   Backend Container   |   |
-|   |   (Nginx Alpine:80)      |  |   (FastAPI:8000)      |   |
-|   +-------------+------------+  +-----------+-----------+   |
-|                 |                           |               |
-|                 +---------------------------+               |
-|                                             |               |
-|                        +--------------------+-------+       |
-|                        | PostgreSQL (Port 5432)     |       |
-|                        +----------------------------+       |
-+--------------------------------------|----------------------+
-                                       | Private VPC / WireGuard
-                                       | (Port 8080 Internal Only)
-                                       ▼
-+-------------------------------------------------------------+
-|             TIER 2: DEDICATED GPU INFERENCE HOST            |
-|       (Cloud GPU Instance: NVIDIA A10G / L4 / RTX 4090)     |
-|                                                             |
-|   +-----------------------------------------------------+   |
-|   |  llm-server Container (llama.cpp CUDA server:8080)  |   |
-|   |  - Quantized Qwen3-1.7B / IndicConformer / TTS      |   |
-|   +-----------------------------------------------------+   |
-+-------------------------------------------------------------+
-```
-
-### Configuration
-1. **On the GPU Inference Host**:
-   Run only the `llm-server` service:
-   ```bash
-   docker run -d \
-     --name senseai-llm-prod \
-     --gpus all \
-     -p 10.0.1.5:8080:8080 \
-     -v /opt/models:/models:ro \
-     ghcr.io/ggerganov/llama.cpp:server-cuda \
-     -m /models/qwen3-1.7b.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 33
+1. **Backend Server (`backend.app.main:app`):**
+   ```powershell
+   .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1 --ws-ping-interval 20 --ws-ping-timeout 20
    ```
-2. **On the Web & Pipeline Host**:
-   Configure `.env`:
-   ```dotenv
-   LLAMA_CPP_URL=http://10.0.1.5:8080/v1
-   REQUIRE_AUTH=true
-   MOCK_MODELS=false
-   DATABASE_URL=postgresql://senseai:password@db:5432/senseai_prod
+   - `--workers 1` keeps lazy-loaded ASR engines in one worker process (multiple workers multiply ~3.75 GB IndicConformer memory per worker).
+   - Default ping interval/timeout (`20 s / 20 s`) stays healthy during cold model loads thanks to the non-blocking `_message_pump` in [`backend/app/websocket/speech_socket.py`](../backend/app/websocket/speech_socket.py).
+
+2. **Local LLM Server (`llama.cpp`, Optional):**
+   - Expected at `LLM_BASE_URL=http://127.0.0.1:8080` serving `qwen3-1.7b` (`Q4_K_M`, `-ngl 24` uses ~`1,520 MiB` VRAM on RTX 2050 per [`tts-benchmark-rtx2050.md`](./deployment/tts-benchmark-rtx2050.md)).
+   - If `llama-server` is stopped, `/api/health` marks `llm` degraded while speech perception (`speech_result`) continues working uninterrupted.
+
+3. **Frontend Production Build:**
+   ```powershell
+   cd frontend
+   npm run build
    ```
-   Start frontend and backend containers:
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d backend frontend db
+   - Build-time env vars: `VITE_API_URL`, `VITE_WS_URL`, `VITE_AUTH_REQUIRED`.
+
+4. **Database & Migrations:**
+   - Development default: `DATABASE_URL=sqlite:///./database/dev.db`.
+   - Apply schema revisions: `alembic upgrade head`.
+   - Production PostgreSQL runtime: **unverified** locally (SQL schema & `alembic` revisions are PostgreSQL-compatible via CI checks when `DATABASE_URL_TEST` is unset).
+
+5. **Vector Index (Optional RAG):**
+   ```powershell
+   .\.venv\Scripts\python.exe -m rag.ingestion --docs data/documents --index-dir data/index
    ```
+   - If `faiss` cannot load (e.g. Windows Smart App Control policy), `NumpyVectorIndex` acts as automatic fallback. Missing index files degrade gracefully to direct chat (`status: rag_fallback`).
 
 ---
 
-## 4. Critical Cloud Cost Reality: GPU Hosting is NOT Free
+## 2. Container Deployment (Docker Compose)
 
-> [!CAUTION]
-> **Open Source Software ≠ Free Cloud Compute**
-> 
-> The entire SenseAI software stack (FastAPI, React, Silero VAD, SenseVoice, IndicConformer, Qwen3, Indic Parler-TTS) is 100% open-source with zero software licensing fees.
-> 
-> **However, dedicated cloud GPU hosting requires substantial real-money operational expenditure (OpEx).**
-
-### Typical Cloud GPU Hourly Rates (2026 Baseline)
-| GPU Model | Dedicated VRAM | Provider Example | Hourly Cost | Monthly Cost (24/7) |
-| :--- | :--- | :--- | :--- | :--- |
-| **NVIDIA T4** | 16 GB GDDR6 | AWS (g4dn.xlarge) / GCP | ~$0.52 / hr | **~$380 / month** |
-| **NVIDIA L4** | 24 GB GDDR6 | GCP (g2-standard-4) | ~$0.70 / hr | **~$510 / month** |
-| **NVIDIA A10G** | 24 GB GDDR6 | AWS (g5.xlarge) | ~$1.01 / hr | **~$730 / month** |
-| **RTX 4090** | 24 GB GDDR6X | RunPod / Lambda / Vast.ai | ~$0.35–$0.50 / hr | **~$260–$360 / month** |
-
-### Recommended Cost Optimization Strategies
-1. **Decoupled Tiering**: Never run web/frontend servers on GPU instances. Keep the web tier on a $10–$20/month basic CPU droplet/VPS.
-2. **Spot / Preemptible Instances**: For non-critical internal demos, spot GPU instances reduce hourly rates by 60–70%.
-3. **Auto-Shutdown / Idle Scale-to-Zero**: If the voice assistant is used during business hours (e.g. 9 AM – 6 PM), schedule the GPU instance to stop at night, saving ~65% of monthly hosting costs.
-4. **Local Hardware for Fixed Workloads**: For enterprise deployments with predictable physical presence, purchasing a dedicated on-premise workstation with an RTX 4080/4090 ($1,500 one-time CapEx) pays for itself in less than 3 months compared to cloud GPU rentals.
+Container definitions live at repository root (`docker-compose.yml`) and under `deployment/`:
+- Validate YAML syntax offline (`config -q`): documented in [`docs/deployment/docker.md`](./deployment/docker.md).
+- Container builds and live Docker runtime stacks (`docker compose up --build`, GPU override, Nginx proxy, containerized PostgreSQL) are currently **`unverified`** (Docker daemon was stopped during authoring).
 
 ---
 
-## 5. Network Security & Firewall Invariants
+## 3. Production Security Checklist
 
-- **Zero Public GPU Access**: Port 8080 (`llm-server`) must NEVER be exposed to the public internet (`0.0.0.0:8080` without auth). It must bind to `127.0.0.1` only or be accessible strictly across a private VPC/WireGuard network.
-- **Port 80/443 Only**: Public traffic enters exclusively through TLS-terminating reverse proxies (Nginx / Caddy / Cloudflare).
-- **Transport Layer Encryption (WSS & HTTP/3 QUIC)**:
-  - **WebSocket Handshake**: Production environments strictly mandate `wss://` (WebSocket Secure over TLS 1.3). Plaintext `ws://` is prohibited and rejected.
-  - **WebTransport over HTTP/3**: WebTransport connections utilize UDP-based QUIC, which natively mandates and embeds **TLS 1.3** forward-secret handshake negotiation. No plaintext WebTransport fallback is permitted.
-  - **Field-Level Encryption at Rest**: SQLite/Postgres stores sensitive transcript and emotion fields encrypted with AES-128-CBC (`DATABASE_ENCRYPTION_KEY`).
-  - **WebSocket Timeout Configuration**: Reverse proxies must configure `proxy_read_timeout 3600s;` and `proxy_send_timeout 3600s;` to prevent premature disconnection during idle voice turns.
+Before setting `APP_ENV=production`:
+1. Set `AUTH_REQUIRED=true` and configure a strong random `JWT_SECRET` (at least 32 characters; `Settings` rejects the development fallback in production).
+2. Keep `LOG_TRANSCRIPTS=false` so spoken text is never written to server logs.
+3. Supply `HF_TOKEN` only at runtime via environment or Docker secret (`--env-file` / `/run/secrets/hf_token`); never commit tokens or model weights.
+4. Keep `TTS_ENABLED=false` on 4 GB VRAM GPUs or 16 GB RAM Windows hosts (see [`docs/deployment/tts-benchmark-rtx2050.md`](./deployment/tts-benchmark-rtx2050.md) for measured OOM and WinError 1455 commit-limit failures).
+5. Verify `/api/health` shows HTTP `200` and review [`docs/LICENSES.md`](./LICENSES.md) before external redistribution.

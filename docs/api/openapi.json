@@ -1,0 +1,1428 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VoiceSense AI Backend",
+    "description": "Phase 2: Modular FastAPI backend with non-blocking speech perception and WebSocket v1.",
+    "version": "0.2.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "description": "Returns system health status:\n- per-component status: asr, emotion, llm, rag, tts, db\n- overall status: 'ok' or 'degraded' (never fails just because optional components or DB are down)",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/speech/upload": {
+      "post": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "Upload Speech",
+        "description": "Decodes audio in memory and returns SpeechResult.\nStores zero audio on disk.",
+        "operationId": "upload_speech_api_speech_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_speech_api_speech_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/predict": {
+      "post": {
+        "tags": [
+          "prediction"
+        ],
+        "summary": "Predict Speech",
+        "description": "Performs speech perception and returns SpeechResult with an optional assistant block.\nShares the exact same in-memory decode and speech_service call as /api/speech/upload.",
+        "operationId": "predict_speech_api_predict_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_predict_speech_api_predict_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "description": "Registers a new user account with memory-hard scrypt password hashing.",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "description": "Authenticates username and password, issuing an HS256 JWT access token.",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get Me",
+        "description": "Returns current authenticated user profile.",
+        "operationId": "get_me_api_auth_me_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/token": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Issue Auth Token",
+        "description": "Issues an HS256 JWT token for session establishment.",
+        "operationId": "issue_auth_token_api_auth_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Verify Token Endpoint",
+        "description": "Validates a JWT token and returns claims if valid.",
+        "operationId": "verify_token_endpoint_api_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/history/sessions": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "List User Sessions",
+        "description": "Retrieves all conversational sessions owned by the authenticated user.",
+        "operationId": "list_user_sessions_api_history_sessions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionSummarySchema"
+                  },
+                  "title": "Response List User Sessions Api History Sessions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/history/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "Get Session Detail",
+        "description": "Retrieves complete session details including predictions, transcripts,\nemotion results, and messages for the authenticated user.\nStrict user isolation enforced: accessing another user's session returns 404.",
+        "operationId": "get_session_detail_api_history_sessions__session_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "history"
+        ],
+        "summary": "Delete Session",
+        "description": "Deletes a specific session belonging to the authenticated user.\nCascading foreign keys purge all associated predictions, transcripts, and messages.",
+        "operationId": "delete_session_api_history_sessions__session_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/history": {
+      "delete": {
+        "tags": [
+          "history"
+        ],
+        "summary": "Delete All User History",
+        "description": "Delete-My-Data endpoint: permanently purges ALL sessions, transcripts,\npredictions, and messages for the authenticated user.",
+        "operationId": "delete_all_user_history_api_history_delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_predict_speech_api_predict_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Audio recording file"
+          },
+          "language_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Hint",
+            "description": "Optional ISO 639-1 language code hint"
+          },
+          "include_assistant": {
+            "type": "boolean",
+            "title": "Include Assistant",
+            "description": "Whether to include downstream assistant response block",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_predict_speech_api_predict_post"
+      },
+      "Body_upload_speech_api_speech_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Audio recording file (WAV, MP3, FLAC, OGG)"
+          },
+          "language_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Hint",
+            "description": "Optional ISO 639-1 language code hint"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_speech_api_speech_upload_post"
+      },
+      "DeleteHistoryResponse": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          },
+          "purged_sessions_count": {
+            "type": "integer",
+            "title": "Purged Sessions Count"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "purged_sessions_count",
+          "message"
+        ],
+        "title": "DeleteHistoryResponse"
+      },
+      "EmotionSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "primary_emotion": {
+            "type": "string",
+            "title": "Primary Emotion"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "valence": {
+            "type": "number",
+            "title": "Valence"
+          },
+          "arousal": {
+            "type": "number",
+            "title": "Arousal"
+          },
+          "raw_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Tags"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "primary_emotion",
+          "confidence",
+          "valence",
+          "arousal",
+          "created_at"
+        ],
+        "title": "EmotionSchema"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "MessageSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "sources": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources"
+          },
+          "prediction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "text",
+          "created_at"
+        ],
+        "title": "MessageSchema"
+      },
+      "ModelVersionSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "engine_name": {
+            "type": "string",
+            "title": "Engine Name"
+          },
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "pinned_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned Revision"
+          },
+          "decoder_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decoder Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "engine_name",
+          "model_id"
+        ],
+        "title": "ModelVersionSchema"
+      },
+      "PredictionResponse": {
+        "properties": {
+          "transcript": {
+            "type": "string",
+            "title": "Transcript",
+            "description": "Clean transcribed spoken text stripped of control tags."
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "ISO 639-1 two-letter language code (e.g. 'en', 'zh', 'ja', 'ko') or 'unknown'."
+          },
+          "emotion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion",
+            "description": "Normalized primary emotion label (e.g. 'happy', 'sad', 'angry', 'neutral', 'fearful', 'disgusted', 'surprised') or None."
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Calibrated model confidence score in [0.0, 1.0], or None if uncalibrated/unavailable."
+          },
+          "processing_time_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Processing Time Ms",
+            "description": "Total wall-clock inference processing time in milliseconds."
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "description": "Identifier of the model and checkpoint used for inference."
+          },
+          "emotion_scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion Scores",
+            "description": "Optional posterior emotion probabilities or score dictionary."
+          },
+          "audio_events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audio Events",
+            "description": "Detected acoustic sound events (e.g. 'BGM', 'Applause', 'Laughter', 'Cough')."
+          },
+          "segments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Segments",
+            "description": "Optional segment-level timestamps and metadata."
+          },
+          "debug": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Debug",
+            "description": "Optional diagnostic data (e.g. raw tags, VAD stats)."
+          },
+          "assistant": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant",
+            "description": "Optional downstream assistant response block added by future phases."
+          }
+        },
+        "type": "object",
+        "required": [
+          "transcript",
+          "language",
+          "processing_time_ms",
+          "model_version"
+        ],
+        "title": "PredictionResponse",
+        "description": "Extends SpeechResult with an optional assistant block.\nIn Phase 2, assistant defaults to None. Later phases populate it with LLM responses."
+      },
+      "PredictionSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "audio_duration_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Duration Ms"
+          },
+          "processing_time_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Time Ms"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelVersionSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transcript": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emotion_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmotionSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at"
+        ],
+        "title": "PredictionSchema"
+      },
+      "SessionDetailSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "primary_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Language"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "predictions": {
+            "items": {
+              "$ref": "#/components/schemas/PredictionSchema"
+            },
+            "type": "array",
+            "title": "Predictions",
+            "default": []
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageSchema"
+            },
+            "type": "array",
+            "title": "Messages",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SessionDetailSchema"
+      },
+      "SessionSummarySchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "primary_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Language"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "turn_count": {
+            "type": "integer",
+            "title": "Turn Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "turn_count"
+        ],
+        "title": "SessionSummarySchema"
+      },
+      "SpeechResult": {
+        "properties": {
+          "transcript": {
+            "type": "string",
+            "title": "Transcript",
+            "description": "Clean transcribed spoken text stripped of control tags."
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "ISO 639-1 two-letter language code (e.g. 'en', 'zh', 'ja', 'ko') or 'unknown'."
+          },
+          "emotion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion",
+            "description": "Normalized primary emotion label (e.g. 'happy', 'sad', 'angry', 'neutral', 'fearful', 'disgusted', 'surprised') or None."
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Calibrated model confidence score in [0.0, 1.0], or None if uncalibrated/unavailable."
+          },
+          "processing_time_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Processing Time Ms",
+            "description": "Total wall-clock inference processing time in milliseconds."
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "description": "Identifier of the model and checkpoint used for inference."
+          },
+          "emotion_scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion Scores",
+            "description": "Optional posterior emotion probabilities or score dictionary."
+          },
+          "audio_events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audio Events",
+            "description": "Detected acoustic sound events (e.g. 'BGM', 'Applause', 'Laughter', 'Cough')."
+          },
+          "segments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Segments",
+            "description": "Optional segment-level timestamps and metadata."
+          },
+          "debug": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Debug",
+            "description": "Optional diagnostic data (e.g. raw tags, VAD stats)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "transcript",
+          "language",
+          "processing_time_ms",
+          "model_version"
+        ],
+        "title": "SpeechResult",
+        "description": "Unified, model-independent representation of speech processing results.\n\nConfidence Policy:\nSenseVoiceSmall rich transcription emits greedy discrete token predictions\nand does not expose calibrated posterior probabilities for emotion or language.\nTherefore, confidence defaults to None unless an explicit logit derivation\nis provided. We never fabricate artificial confidence scores."
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "Bearer"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "title": "Expires In Seconds"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in_seconds",
+          "user_id",
+          "username"
+        ],
+        "title": "TokenResponse"
+      },
+      "TranscriptSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "mixed_language": {
+            "type": "boolean",
+            "title": "Mixed Language"
+          },
+          "audio_events": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Events"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "language",
+          "mixed_language",
+          "created_at"
+        ],
+        "title": "TranscriptSchema"
+      },
+      "UserLoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Login username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "Login password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "UserLoginRequest"
+      },
+      "UserRegisterRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 3,
+            "title": "Username",
+            "description": "Unique username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 6,
+            "title": "Password",
+            "description": "User password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "UserRegisterRequest"
+      },
+      "UserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "is_active",
+          "created_at"
+        ],
+        "title": "UserResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "/api/auth/login"
+          }
+        }
+      }
+    }
+  }
+}

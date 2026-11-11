@@ -39,9 +39,10 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    - `sample_rate`: Sample rate in Hz (default: `16000`).
    - `encoding`: Audio encoding format. Currently supported: `"pcm_s16le"` (16-bit signed integer, linear PCM, little-endian, mono).
    - `language_hint`: Optional ISO 639-1 language code hint or `null`:
-     - Indic languages (`"hi"`, `"bn"`, `"mr"`, `"ta"`, `"te"`, etc.): routes dynamically to IndicConformer-600m.
-     - Global languages (`"en"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`): routes dynamically to SenseVoiceSmall.
-     - When `null`: routes according to Spoken LID detection (if confidence $\ge$ threshold) or falls back to SenseVoice default.
+     - Indic languages (`"hi"`, `"bn"`, `"mr"`, `"ta"`, `"te"`, etc.): routes to IndicConformer-600m (CPU `ctc` by default).
+     - Global languages (`"en"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`): routes to SenseVoiceSmall.
+     - When `null` (Auto): always defaults to **SenseVoiceSmall**. Automatic spoken language identification (LID) is **not** wired into runtime routing (Phase 4b was deferred because tested LID models misclassified the Hindi sample and added RAM overhead). Use `"hi"` for Hindi speech.
+   - `session_id`: Optional client-supplied session identifier. When omitted, the server generates `sess_<12-hex-chars>`.
    - `auth_token`: Optional (or mandatory if `AUTH_REQUIRED=true`) HS256 JWT access token acquired from `POST /api/auth/login` or `POST /api/auth/register`.
 
 2. **Binary Audio Frames**:
@@ -253,7 +254,23 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
       "message": "TTS model or dependencies unavailable; continuing in text-only mode."
     }
     ```
-    > **Note**: An `llm_unavailable` or `tts_unavailable` error keeps the WebSocket connection open so subsequent voice turns can still be transcribed.
+    > **Note**: Non-fatal runtime errors (`llm_unavailable`, `llm_bad_response`, `tts_unavailable`, `BUFFER_OVERFLOW`, `RATE_LIMIT_EXCEEDED`, `AUDIO_DURATION_LIMIT_EXCEEDED`, `INFERENCE_ERROR`) keep the WebSocket connection open so subsequent voice turns can still be transcribed.
+
+    **Complete Error Code Reference:**
+
+    | Code | Cause | Closes Socket? |
+    |---|---|---|
+    | `INVALID_JSON` | Malformed UTF-8 JSON control frame | No |
+    | `AUTH_REQUIRED` | Missing `auth_token` in `start` while `AUTH_REQUIRED=true` | Yes (`1008`) |
+    | `AUTH_FAILED` | Invalid/expired JWT or missing/inactive user | Yes (`1008`) |
+    | `NOT_STARTED` | Binary audio received before `start` frame | No |
+    | `BUFFER_OVERFLOW` | Connection audio buffer exceeded `WS_MAX_BUFFER_BYTES` (`5242880`) | No (resets buffer) |
+    | `AUDIO_DURATION_LIMIT_EXCEEDED` | Turn audio duration exceeded `MAX_UTTERANCE_DURATION_SECONDS` (`30.0 s`) | No (resets turn) |
+    | `RATE_LIMIT_EXCEEDED` | Exceeded `RATE_LIMIT_UTTERANCES_PER_MINUTE` (`20`) | No |
+    | `INFERENCE_ERROR` | Unhandled ASR/VAD worker failure during turn processing | No |
+    | `llm_bad_response` | Empty output or excessive repetition guard triggered by Qwen3 output | No |
+    | `llm_unavailable` | Local `llama.cpp` server unreachable, timed out, or circuit-breaker open | No |
+    | `tts_unavailable` | TTS disabled or worker failed/crashed (`TTS_ENABLED=true` only) | No |
 
 13. **Cancellation & Ordering Guarantees**:
     - `speech_result` is always dispatched BEFORE any LLM or TTS request is started and never waits on them.
@@ -265,8 +282,13 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
 
 ## 3. Reserved Message Types
 
-The following message types are reserved for telemetry and client controls:
+The following server control/event types belong to `RESERVED_MESSAGE_TYPES` and are reserved on the WebSocket stream:
+- `llm_delta`
+- `llm_done`
+- `tts_chunk`
+- `tts_done`
 - `status`
+- `rag_sources`
 
 Any unknown message types received from the client are safely ignored.
 
@@ -281,10 +303,10 @@ Any unknown message types received from the client are safely ignored.
 3. **Turn Rate Limiting**:
    Sessions are capped at a maximum of **20 utterances per 60-second sliding window** (`RATE_LIMIT_UTTERANCES_PER_MINUTE`). Exceeding this threshold triggers a `RATE_LIMIT_EXCEEDED` error frame.
 4. **Turn Audio Duration Cap**:
-   Individual audio turns cannot exceed **30.0 seconds** (`MAX_AUDIO_DURATION_SECONDS`). Audio exceeding this limit is rejected with `AUDIO_DURATION_LIMIT_EXCEEDED`.
+   Individual audio turns cannot exceed **30.0 seconds** (`MAX_UTTERANCE_DURATION_SECONDS`). Audio exceeding this limit is rejected with `AUDIO_DURATION_LIMIT_EXCEEDED`.
 5. **Zero Raw Audio Persistence**:
-   Raw audio bytes and PCM waveforms are NEVER stored in the database or persisted to disk. Only processed transcripts, acoustic tags, and latency metrics are retained.
+   Raw audio bytes and PCM waveforms are NEVER stored in the database or persisted to disk. Only processed transcripts, acoustic tags, and latency metrics are retained (authenticated sessions only when `STORE_TRANSCRIPTS=true`).
 6. **Resource Cleanup**:
    Disconnects clean up segmenter state and in-memory buffers immediately.
-7. **Non-Blocking Inference**:
-   ASR and SER inference runs off the asyncio event loop via threadpools (`asyncio.to_thread`) bounded by an asynchronous semaphore (`INFERENCE_CONCURRENCY_LIMIT`).
+7. **Non-Blocking Inference & Cold-Load Keepalive**:
+   ASR and SER inference runs off the asyncio event loop via threadpools (`asyncio.to_thread`) bounded by an asynchronous semaphore (`INFERENCE_CONCURRENCY_LIMIT`). An active `_message_pump` task continuously drains uvicorn's ASGI receive queue and immediately replies `{"type": "pong"}` to `{"type": "ping"}`, preventing `pause_reading()` transport stalls during cold model loads. Recommended server flags: `--workers 1 --ws-ping-interval 20 --ws-ping-timeout 20`.

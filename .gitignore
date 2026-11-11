@@ -106,3 +106,13 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Phase 12 hardening (additional audio, vector indexes, DBs, CI coverage, scratch dirs)
+*.m4a
+*.opus
+*.faiss
+*.db
+*.sqlite
+*.sqlite3
+coverage.xml
+tmp/
