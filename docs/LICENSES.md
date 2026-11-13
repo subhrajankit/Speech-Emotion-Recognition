@@ -6,7 +6,7 @@ VoiceSense AI orchestrates local open-weight models and references public resear
 
 ## 1. Project Source License
 
-The repository [`LICENSE`](../LICENSE) file currently states the **MIT License** (`Copyright (c) 2026 SenseAI Contributors`). That file was **not** modified during Phase 12 documentation updates pending confirmation from the project owner.
+The repository [`LICENSE`](../LICENSE) file states the **MIT License** (`Copyright (c) 2026 SenseAI Contributors`), confirmed as the canonical project license.
 
 ---
 

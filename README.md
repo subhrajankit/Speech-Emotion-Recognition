@@ -386,5 +386,5 @@ Only numbers backed by saved artifact files are treated as measurements below:
 
 ## License
 
-- **Project Repository License:** [`LICENSE`](LICENSE) currently contains the **MIT License** (`Copyright (c) 2026 SenseAI Contributors`; left unchanged pending owner confirmation).
+- **Project Repository License:** [`LICENSE`](LICENSE) — **MIT License** (`Copyright (c) 2026 SenseAI Contributors`).
 - **Third-Party Weights & Datasets:** See [`docs/LICENSES.md`](docs/LICENSES.md) for upstream licenses (`FunASR Model License`, `MIT`, `Apache 2.0`, `CREMA-D ODbL v1.0`) and Hugging Face gating requirements.
