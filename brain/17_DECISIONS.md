@@ -572,6 +572,19 @@
   - Live WebSocket audio turns survive arbitrarily long cold model initialization without dropped connections or custom uvicorn ping flags.
   - Zero event loop stalls (`< 0.23s` max loop latency measured during 49s model load).
 
+## ADR 038: Phase 12 — Empirical Documentation Integrity, Zero-Fabrication Metric Ledger, and Claims Auditing
+- **Context**:
+  Project documentation contained legacy references to unmigrated features (e.g. Qwen3-4B, Command Engine, WebTransport, unmeasured latency claims, and automatic Hindi LID detection). Documentation needed to be audited and aligned strictly with empirical reality, where every number traces to a saved file and every capability is transparently labeled.
+- **Decision**:
+  1. **Strict Empirical Labeling**: Every component and feature is classified as `real-verified`, `test-double only`, `smoke only`, `unverified`, or `NOT YET MEASURED`.
+  2. **Zero-Fabrication Metric Ledger**: All reported benchmarks in `README.md`, `status.md`, and `experiments.md` cite saved artifact files directly (`hard_gate_eval_8i.txt`, `run_phase10_e2e_real.txt`, `rag_ingestion_8i.txt`, `lid_eval_existing_samples.txt`, `tts-benchmark-rtx2050.md`, `metrics.json`). Unmeasured pipelines (real CREMA-D training, SenseVoice zero-shot SER) are explicitly labeled `NOT YET MEASURED`.
+  3. **Reconciled Smoke Run Discrepancy**: Corrected earlier documentation typo (`0.2500...`) in `docs/training/README.md` to match the exact saved values in `run_20261025_193120/metrics.json` (`0.4000 / 0.1667 / 0.2000 / 0.4800`).
+  4. **Documented Gaps as Code/Doc Mismatches**: Left working application code untouched and recorded discovered mismatches (such as `POST /api/predict` Phase 2 stub with `include_assistant=true`, missing `auth_required` in `/api/health`, and `HistoryService` neutral fallback on null emotion) in `docs/api/rest.md`, `README.md`, and the Phase 12 close-out report.
+  5. **Project License Confirmation**: Preserved the existing root `LICENSE` file (`MIT License`, `Copyright (c) 2026 SenseAI Contributors`) as confirmed by the project owner.
+- **Consequences**:
+  - Complete truthfulness across all user-facing and architecture documents.
+  - Full transparency on system boundaries, edge cases, and hardware resource constraints.
+
 
 
 

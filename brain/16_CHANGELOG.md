@@ -2,6 +2,22 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase 12] - Documentation and Final Claims Audit (2026-11-13)
+- **Empirical Documentation & Truth-Tied README**:
+  - Completely overhauled `README.md` across all 16 required sections: project overview, Mermaid architecture diagram, verified features only, tech stack, Windows/Linux setup, local development commands, model setup (pinned IndicConformer revision `2a77d305038dfc502fd9464e7d028b90381976cb`, gated HF access), environment variables, OpenAPI & WebSocket protocol, SER training & smoke run, evaluation benchmarks, Docker deployment, project structure, research-paper experiments ledger, and honest limitations.
+  - Reconciled all numbers against saved artifacts under `docs/deployment/runs/` and `docs/training/runs/`.
+  - Exported live OpenAPI 3.1.0 specification from `backend.app.main:app` to `docs/api/openapi.json` (1,428 lines).
+  - Documented REST routes in `docs/api/rest.md` and WebSocket v1 protocol in `docs/api/websocket.md` (including in-frame JWT authentication, multi-segment VAD results, keepalive pump, and all error codes).
+  - Authored final architecture specification in `docs/architecture/architecture.md` (module boundaries, 5 failure-isolation variants, lazy engine loading, measured memory footprints) and finalized `docs/architecture/status.md`.
+  - Authored `docs/training/experiments.md` with complete reproducibility checklist, reconciling synthetic smoke run metrics (`accuracy: 0.4000`, `uar: 0.1667`, `macro_f1: 0.2000`, `weighted_f1: 0.4800` from `run_20261025_193120`), and marking real CREMA-D training and SenseVoice zero-shot baselines as `NOT YET MEASURED`.
+  - Authored `docs/LICENSES.md` detailing upstream licenses for all 8 models/datasets and confirming project canonical MIT License (`Copyright (c) 2026 SenseAI Contributors`).
+  - Authored `docs/DEMO.md` with 10-step operator walkthrough and component-unavailable fallback guidance.
+- **Link & Test Verification**:
+  - Ran automated link checker across all 20 Markdown files: 0 broken links.
+  - Re-verified CI-lite test suite in `.venv-ci`: 162 passed, 11 deselected in 10.16s.
+  - Re-verified frontend suite: 32 passed (`vitest`), `tsc --noEmit`, `eslint`, and `vite build` clean exit 0.
+  - Hardened `.gitignore` to ignore `*.m4a`, `*.opus`, `*.faiss`, `*.db`, `*.sqlite`, `*.sqlite3`, `coverage.xml`, `tmp/`.
+
 ## [Phase 10b] - Close the Gaps in Phase 10 (2026-11-03)
 - **WebSocket Keepalive & Decoupled Message Pump**:
   - Resolved WebSocket keepalive disconnects during cold model loading (e.g., IndicConformer / SenseVoice initial 10s-50s loads) under default uvicorn keepalive settings (`ws_ping_interval=20.0`, `ws_ping_timeout=20.0`).
