@@ -1,0 +1,40 @@
+# ==============================================================================
+# VoiceSense AI — Production Frontend Dockerfile (Static Vite Build -> Nginx)
+# ==============================================================================
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+
+ARG VITE_API_URL=http://127.0.0.1
+ARG VITE_WS_URL=ws://127.0.0.1/ws/speech
+ARG VITE_AUTH_REQUIRED=false
+ARG VITE_ASR_ENGLISH_ONLY=true
+
+ENV VITE_API_URL=${VITE_API_URL} \
+    VITE_WS_URL=${VITE_WS_URL} \
+    VITE_AUTH_REQUIRED=${VITE_AUTH_REQUIRED} \
+    VITE_ASR_ENGLISH_ONLY=${VITE_ASR_ENGLISH_ONLY}
+
+RUN npm run build
+
+# ------------------------------------------------------------------------------
+FROM nginx:1.27-alpine AS runtime
+
+RUN rm -rf /usr/share/nginx/html/*
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY deployment/docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
+

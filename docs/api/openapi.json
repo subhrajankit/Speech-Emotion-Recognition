@@ -598,7 +598,7 @@
               }
             ],
             "title": "Language Hint",
-            "description": "Optional ISO 639-1 language code hint"
+            "description": "Optional language hint. English-only MVP (ASR_ENGLISH_ONLY=true): accepts \"en\", \"auto\", empty, or null; other values are rejected with INVALID_LANGUAGE_HINT. Multilingual routing (e.g. \"hi\") requires ASR_ENGLISH_ONLY=false."
           },
           "include_assistant": {
             "type": "boolean",
@@ -631,7 +631,7 @@
               }
             ],
             "title": "Language Hint",
-            "description": "Optional ISO 639-1 language code hint"
+            "description": "Optional language hint. English-only MVP (ASR_ENGLISH_ONLY=true): accepts \"en\", \"auto\", empty, or null; other values are rejected with INVALID_LANGUAGE_HINT. Multilingual routing (e.g. \"hi\") requires ASR_ENGLISH_ONLY=false."
           }
         },
         "type": "object",
@@ -674,15 +674,36 @@
             "title": "Primary Emotion"
           },
           "confidence": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Confidence"
           },
           "valence": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Valence"
           },
           "arousal": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Arousal"
           },
           "raw_tags": {
@@ -709,9 +730,6 @@
         "required": [
           "id",
           "primary_emotion",
-          "confidence",
-          "valence",
-          "arousal",
           "created_at"
         ],
         "title": "EmotionSchema"

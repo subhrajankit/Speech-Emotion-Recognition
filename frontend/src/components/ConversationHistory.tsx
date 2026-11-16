@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw,
   Trash2,
@@ -19,6 +19,8 @@ import {
   purgeAllHistory,
 } from '../services/api';
 import { SessionSummary, SessionDetail } from '../types/history';
+import { isAuthError } from '../lib/httpErrors';
+import { createRequestSequencer, RequestSequencer } from '../lib/requestSequencer';
 import { EmotionBadge } from './emotion/EmotionBadge';
 import { Badge } from './ui/Badge';
 
@@ -26,11 +28,18 @@ export interface ConversationHistoryProps {
   token: string | null;
   onOpenAuth: () => void;
   onClearLocalHistory?: () => void;
+  /** Called when a protected request fails with 401/403; parent clears credentials. */
+  onAuthError?: () => void;
+  /** External request to open a specific session detail (e.g. from the rail).
+   *  `nonce` lets the parent retrigger the same session id. */
+  openSessionRequest?: { sessionId: string; nonce: number } | null;
 }
 
 export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   token,
   onOpenAuth,
+  onAuthError,
+  openSessionRequest,
 }) => {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -42,46 +51,93 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   const [confirmPurgeAll, setConfirmPurgeAll] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
+  // Request sequencing: stale async responses (e.g. issued under a previous
+  // account's token, or for a previously selected session) must not mutate
+  // current state. Invalidated on every token change and on unmount.
+  const seqRef = useRef<RequestSequencer | null>(null);
+  if (seqRef.current === null) {
+    seqRef.current = createRequestSequencer();
+  }
+  const requestSeq = seqRef.current;
+
   // Load sessions list
   const loadSessions = useCallback(async () => {
     if (!token) return;
+    const reqId = requestSeq.next();
     setIsLoading(true);
     setErrorMessage(null);
     try {
       const data = await fetchHistorySessions(token);
+      if (!requestSeq.isCurrent(reqId)) return;
       setSessions(data);
     } catch (err: any) {
+      if (!requestSeq.isCurrent(reqId)) return;
+      if (isAuthError(err)) {
+        onAuthError?.();
+        return;
+      }
       setErrorMessage(err.message || 'Failed to load conversation sessions.');
     } finally {
-      setIsLoading(false);
+      if (requestSeq.isCurrent(reqId)) {
+        setIsLoading(false);
+      }
     }
-  }, [token]);
+  }, [token, onAuthError, requestSeq]);
 
   useEffect(() => {
+    // Invalidate any in-flight request from a previous token/account.
+    requestSeq.invalidate();
     if (token) {
       loadSessions();
     } else {
       setSessions([]);
       setSelectedSessionId(null);
       setSessionDetail(null);
+      setConfirmPurgeAll(false);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      setDeletingSessionId(null);
     }
-  }, [token, loadSessions]);
+  }, [token, loadSessions, requestSeq]);
+
+  // Invalidate outstanding requests when the component unmounts.
+  useEffect(() => {
+    return () => requestSeq.invalidate();
+  }, [requestSeq]);
 
   // Open session detail
-  const handleOpenSession = async (sessionId: string) => {
+  const handleOpenSession = useCallback(async (sessionId: string) => {
     if (!token) return;
+    const reqId = requestSeq.next();
     setSelectedSessionId(sessionId);
     setIsLoadingDetail(true);
     setErrorMessage(null);
     try {
       const detail = await fetchSessionDetail(sessionId, token);
+      if (!requestSeq.isCurrent(reqId)) return;
       setSessionDetail(detail);
     } catch (err: any) {
+      if (!requestSeq.isCurrent(reqId)) return;
+      if (isAuthError(err)) {
+        onAuthError?.();
+        return;
+      }
       setErrorMessage(err.message || 'Failed to load session details.');
     } finally {
-      setIsLoadingDetail(false);
+      if (requestSeq.isCurrent(reqId)) {
+        setIsLoadingDetail(false);
+      }
     }
-  };
+  }, [token, requestSeq, onAuthError]);
+
+  // External deep-link: open a specific session when requested (e.g. from
+  // the Recent Conversations rail). nonce retriggers repeat selections.
+  useEffect(() => {
+    if (openSessionRequest && token) {
+      handleOpenSession(openSessionRequest.sessionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSessionRequest, token]);
 
   // Delete individual session
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
@@ -92,36 +148,58 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
     }
 
     setDeletingSessionId(sessionId);
+    const reqId = requestSeq.next();
     try {
       await deleteSession(sessionId, token);
+      if (!requestSeq.isCurrent(reqId)) return;
       setSuccessMessage(`Session deleted.`);
       if (selectedSessionId === sessionId) {
         setSelectedSessionId(null);
         setSessionDetail(null);
       }
+      setDeletingSessionId(null);
       await loadSessions();
     } catch (err: any) {
+      if (!requestSeq.isCurrent(reqId)) return;
+      if (isAuthError(err)) {
+        onAuthError?.();
+        return;
+      }
       setErrorMessage(err.message || 'Failed to delete session.');
     } finally {
-      setDeletingSessionId(null);
+      if (requestSeq.isCurrent(reqId)) {
+        setDeletingSessionId(null);
+      }
     }
   };
 
   // Delete all my data (Delete-My-Data endpoint)
   const handlePurgeAllData = async () => {
     if (!token) return;
+    const reqId = requestSeq.next();
     setIsLoading(true);
     try {
       const resp = await purgeAllHistory(token);
+      if (!requestSeq.isCurrent(reqId)) return;
       setSuccessMessage(resp.message || 'All user history successfully deleted.');
       setConfirmPurgeAll(false);
       setSelectedSessionId(null);
       setSessionDetail(null);
       setSessions([]);
     } catch (err: any) {
+      // A failed purge must disarm the confirmation so it cannot remain
+      // armed for a stray second click.
+      setConfirmPurgeAll(false);
+      if (!requestSeq.isCurrent(reqId)) return;
+      if (isAuthError(err)) {
+        onAuthError?.();
+        return;
+      }
       setErrorMessage(err.message || 'Failed to purge user history.');
     } finally {
-      setIsLoading(false);
+      if (requestSeq.isCurrent(reqId)) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -143,38 +221,12 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   // Unauthenticated State
   if (!token) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '1.25rem',
-          padding: '3rem 1.5rem',
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
-          maxWidth: '560px',
-          margin: '2rem auto',
-          textAlign: 'center',
-        }}
-      >
-        <div
-          style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(59, 130, 246, 0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--color-voice)',
-          }}
-        >
-          <Lock size={22} />
+      <div className="locked-panel">
+        <div className="locked-icon">
+          <Lock size={22} aria-hidden="true" />
         </div>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
+          <h2 className="history-title" style={{ fontSize: '1.25rem' }}>
             Account Required for History
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem', lineHeight: 1.5 }}>
@@ -184,21 +236,9 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
         <button
           type="button"
           onClick={onOpenAuth}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.65rem 1.25rem',
-            borderRadius: 'var(--radius-sm)',
-            border: 'none',
-            backgroundColor: 'var(--color-voice)',
-            color: '#FFFFFF',
-            fontWeight: 600,
-            fontSize: '0.88rem',
-            cursor: 'pointer',
-          }}
+          className="btn btn-primary-solid"
         >
-          <Lock size={15} />
+          <Lock size={15} aria-hidden="true" />
           <span>Sign In / Register</span>
         </button>
       </div>
@@ -206,36 +246,25 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '960px', margin: '0 auto' }}>
+    <div className="history-page">
       {/* Header Bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="history-head">
         <div>
-          <h2 style={{ fontSize: '1.35rem', fontWeight: 700, margin: 0 }}>Conversational History</h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+          <h2 className="history-title">Conversational History</h2>
+          <p className="history-subtitle">
             Persistent sessions and speech turns stored under your account.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <div className="history-actions">
           <button
             type="button"
             onClick={loadSessions}
             disabled={isLoading}
             aria-label="Refresh session list"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.45rem 0.85rem',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border-subtle)',
-              backgroundColor: 'var(--bg-surface)',
-              color: 'var(--text-primary)',
-              fontSize: '0.85rem',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-            }}
+            className="btn btn-secondary-soft"
           >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} aria-hidden="true" />
             <span>Refresh</span>
           </button>
 
@@ -243,20 +272,9 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
             <button
               type="button"
               onClick={() => setConfirmPurgeAll(true)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.45rem 0.85rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(239, 68, 68, 0.35)',
-                backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                color: 'var(--color-danger)',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
+              className="btn btn-danger-soft"
             >
-              <Trash2 size={14} />
+              <Trash2 size={14} aria-hidden="true" />
               <span>Delete All My Data</span>
             </button>
           )}
@@ -267,31 +285,14 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                 type="button"
                 onClick={handlePurgeAllData}
                 disabled={isLoading}
-                style={{
-                  padding: '0.45rem 0.85rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  backgroundColor: 'var(--color-danger)',
-                  color: '#FFFFFF',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                className="btn btn-danger-solid"
               >
                 Confirm Purge All
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmPurgeAll(false)}
-                style={{
-                  padding: '0.45rem 0.65rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                  backgroundColor: 'var(--bg-surface)',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
+                className="btn btn-secondary-soft"
               >
                 Cancel
               </button>
@@ -302,30 +303,12 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
 
       {/* Notifications */}
       {errorMessage && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.65rem 0.9rem',
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            color: 'var(--color-danger)',
-            fontSize: '0.85rem',
-          }}
-        >
+        <div role="alert" className="flash flash-error">
           {errorMessage}
         </div>
       )}
       {successMessage && (
-        <div
-          role="status"
-          style={{
-            padding: '0.65rem 0.9rem',
-            borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            color: 'var(--color-success)',
-            fontSize: '0.85rem',
-          }}
-        >
+        <div role="status" className="flash flash-success">
           {successMessage}
         </div>
       )}
@@ -339,48 +322,26 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
               setSelectedSessionId(null);
               setSessionDetail(null);
             }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              alignSelf: 'flex-start',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--color-voice)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              padding: '0.2rem 0',
-            }}
+            className="text-btn"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={16} aria-hidden="true" />
             <span>Back to Sessions List</span>
           </button>
 
-          <div
-            style={{
-              padding: '1.25rem',
-              backgroundColor: 'var(--bg-surface)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-subtle)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div className="detail-card">
+            <div className="detail-head">
               <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Session ID</div>
-                <div className="mono" style={{ fontSize: '0.95rem', fontWeight: 600 }}>{sessionDetail.id}</div>
+                <div className="detail-id-label">Session ID</div>
+                <div className="detail-id-value">{sessionDetail.id}</div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <div className="detail-side">
                 {sessionDetail.primary_language && (
                   <Badge variant="accent">
-                    <Globe size={11} style={{ marginRight: '3px' }} />
+                    <Globe size={11} style={{ marginRight: '3px' }} aria-hidden="true" />
                     {sessionDetail.primary_language.toUpperCase()}
                   </Badge>
                 )}
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span className="detail-date">
                   {formatDate(sessionDetail.created_at)}
                 </span>
               </div>
@@ -388,14 +349,14 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
 
             {/* List of Predictions and Paired Messages */}
             {isLoadingDetail ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '2rem 0', color: 'var(--text-muted)' }}>
-                <Loader2 size={18} className="animate-spin" />
+              <div className="loading-row">
+                <Loader2 size={18} className="animate-spin" aria-hidden="true" />
                 <span>Loading session details...</span>
               </div>
             ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {sessionDetail.predictions.length === 0 && sessionDetail.messages.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '1rem 0' }}>
+                <div className="empty-hint" style={{ padding: '1rem 0' }}>
                   No stored turns found for this session.
                 </div>
               ) : (
@@ -405,23 +366,12 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                   );
 
                   return (
-                    <div
-                      key={pred.id || idx}
-                      style={{
-                        padding: '1rem',
-                        borderRadius: 'var(--radius-sm)',
-                        backgroundColor: 'var(--bg-base)',
-                        border: '1px solid var(--border-subtle)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.65rem',
-                      }}
-                    >
+                    <div key={pred.id || idx} className="turn-mini">
                       {/* User Utterance */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                            <UserIcon size={13} />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <div className="turn-label">
+                            <UserIcon size={13} aria-hidden="true" />
                             <span>User Speech</span>
                             {pred.transcript?.language && (
                               <Badge variant="neutral">{pred.transcript.language}</Badge>
@@ -433,14 +383,14 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                               confidence={pred.emotion_result?.confidence ?? null}
                             />
                             {pred.processing_time_ms && (
-                              <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              <span className="meta-mono">
                                 {Math.round(pred.processing_time_ms)}ms
                               </span>
                             )}
                           </div>
                         </div>
-                        <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.45 }}>
-                          {pred.transcript?.text || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>-</span>}
+                        <div className="turn-body" style={{ fontSize: '0.95rem', lineHeight: 1.45 }}>
+                          {pred.transcript?.text || <span className="empty-hint">-</span>}
                         </div>
                       </div>
 
@@ -456,8 +406,8 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                             gap: '0.3rem',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--color-voice)', fontWeight: 600 }}>
-                            <Bot size={13} />
+                          <div className="turn-label assistant" style={{ fontSize: '0.78rem' }}>
+                            <Bot size={13} aria-hidden="true" />
                             <span>AI Assistant</span>
                           </div>
                           <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
@@ -475,27 +425,18 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
         </div>
       ) : (
         /* Sessions List */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="session-list">
           {isLoading ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+            <div className="loading-row">
               Loading sessions...
             </div>
           ) : sessions.length === 0 ? (
-            <div
-              style={{
-                textAlign: 'center',
-                padding: '2.5rem',
-                backgroundColor: 'var(--bg-surface)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-muted)',
-              }}
-            >
-              <MessageSquare size={32} style={{ margin: '0 auto 0.75rem auto', opacity: 0.4 }} />
-              <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            <div className="empty-state">
+              <MessageSquare size={32} className="empty-state-icon" aria-hidden="true" />
+              <div className="empty-state-title">
                 No saved sessions found
               </div>
-              <div style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}>
+              <div className="empty-state-body">
                 Speech sessions conducted while signed in are automatically stored here.
               </div>
             </div>
@@ -507,25 +448,17 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                 tabIndex={0}
                 onClick={() => handleOpenSession(sess.id)}
                 onKeyDown={(e) => {
+                  if (e.repeat) return;
                   if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
                     handleOpenSession(sess.id);
                   }
                 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '1rem 1.25rem',
-                  backgroundColor: 'var(--bg-surface)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-subtle)',
-                  cursor: 'pointer',
-                  transition: 'border-color 0.15s ease, background-color 0.15s ease',
-                }}
+                className="session-row"
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <span className="mono" style={{ fontSize: '0.92rem', fontWeight: 600 }}>
+                <div className="session-main">
+                  <div className="session-id-row">
+                    <span className="mono" style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                       {sess.id}
                     </span>
                     {sess.primary_language && (
@@ -534,36 +467,29 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                       </Badge>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <Calendar size={12} />
+                  <div className="session-meta">
+                    <span className="session-meta-item">
+                      <Calendar size={12} aria-hidden="true" />
                       {formatDate(sess.created_at)}
                     </span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <MessageSquare size={12} />
+                    <span className="session-meta-item">
+                      <MessageSquare size={12} aria-hidden="true" />
                       {sess.turn_count} {sess.turn_count === 1 ? 'turn' : 'turns'}
                     </span>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div className="session-side">
                   <button
                     type="button"
                     onClick={(e) => handleDeleteSession(sess.id, e)}
                     disabled={deletingSessionId === sess.id}
                     aria-label={`Delete session ${sess.id}`}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                      padding: '0.4rem',
-                      borderRadius: 'var(--radius-sm)',
-                    }}
+                    className="icon-btn danger"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={16} aria-hidden="true" />
                   </button>
-                  <ChevronRight size={18} style={{ color: 'var(--text-muted)' }} />
+                  <ChevronRight size={18} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
                 </div>
               </div>
             ))

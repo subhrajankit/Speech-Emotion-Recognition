@@ -29,9 +29,9 @@ class EmotionResult(Base):
         nullable=False
     )
     primary_emotion: Mapped[str] = mapped_column(String(32), nullable=False)
-    confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    valence: Mapped[float] = mapped_column(Float, nullable=False)
-    arousal: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    valence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    arousal: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_tags: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

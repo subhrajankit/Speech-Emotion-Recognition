@@ -7,7 +7,7 @@ import os
 import logging
 from contextlib import contextmanager
 from typing import Generator
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 from sqlalchemy.pool import StaticPool
 
@@ -42,11 +42,25 @@ def _create_configured_engine(database_url: str):
         if ":memory:" in database_url:
             engine_kwargs["poolclass"] = StaticPool
 
-    return create_engine(
+    engine = create_engine(
         database_url,
         connect_args=connect_args,
         **engine_kwargs
     )
+
+    if database_url.startswith("sqlite"):
+        # SQLite ignores foreign keys unless enabled per-connection. The pragma
+        # is connection-scoped, so it must run on every new DBAPI connection —
+        # including each pooled connection — not once per engine.
+        @event.listens_for(engine, "connect")
+        def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON")
+            finally:
+                cursor.close()
+
+    return engine
 
 
 # Application-level engine and sessionmaker

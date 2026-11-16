@@ -1,5 +1,12 @@
 """
-Reproducible Emotion Model Training Pipeline.
+Reproducible Emotion Model Training Pipeline — SCAFFOLD / NOT YET TRAINING.
+
+WARNING: This script does NOT perform real acoustic emotion model training.
+It generates dataset manifests and saves the classifier head's RANDOM INITIAL
+weights as `untrained_init_weights.npz`. That artifact is an initialization
+snapshot for pipeline plumbing tests only — it is NOT a trained checkpoint and
+must never be loaded by serving code or presented as a production model.
+
 Features:
 - Config-driven (YAML)
 - Fixed seeds across torch, numpy, and random
@@ -210,13 +217,20 @@ def train_emotion_model(
     # Model training (PyTorch or NumPy fallback)
     epochs = config_data.get("training", {}).get("epochs", 5)
     batch_size = config_data.get("training", {}).get("batch_size", 16)
-    checkpoint_file = checkpoints_dir / "best_model.npz"
 
-    # NumPy reference training / initialization
+    # NumPy reference initialization snapshot.
+    # NOTE: no feature extraction or gradient training is performed in this
+    # scaffold — the saved weights are the random initialization only.
     np_classifier = NumPyEmotionClassifier(model_config)
+    checkpoint_file = checkpoints_dir / "untrained_init_weights.npz"
     np.savez_compressed(
         checkpoint_file,
         **np_classifier.weights
+    )
+    logger.warning(
+        "Saved UNTRAINED random-initialization weights to %s. "
+        "This is not a trained emotion model.",
+        checkpoint_file,
     )
 
     training_time = round(time.time() - start_time, 2)
@@ -258,7 +272,13 @@ def train_emotion_model(
             "batch_size": batch_size,
             "seed": seed,
             "training_time_sec": training_time,
+            "training_performed": False,
         },
+        "checkpoint_status": "UNTRAINED_RANDOM_INITIALIZATION",
+        "checkpoint_warning": (
+            "untrained_init_weights.npz contains random initial weights only; "
+            "no acoustic features were extracted and no training was performed."
+        ),
         "artifacts": {
             "checkpoint": str(checkpoint_file.resolve()),
             "model_config": str(model_config_file.resolve()),

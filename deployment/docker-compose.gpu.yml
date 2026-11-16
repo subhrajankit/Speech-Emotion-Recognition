@@ -1,0 +1,48 @@
+# ==============================================================================
+# VoiceSense AI — Optional NVIDIA GPU Override
+# Stacks on top of either docker-compose.yml (with --profile llm) or deployment/docker-compose.prod.yml.
+# Nothing in the base compose files requires NVIDIA drivers or GPU hardware.
+# Usage (prod + GPU):
+#   docker compose -f deployment/docker-compose.prod.yml -f deployment/docker-compose.gpu.yml --env-file .env up -d --build
+# ==============================================================================
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.backend
+      args:
+        USE_CUDA: "true"
+        TORCH_INDEX_URL: ${CUDA_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu126}
+    environment:
+      SENSEVOICE_DEVICE: ${SENSEVOICE_DEVICE:-cuda}
+      INDICCONFORMER_DEVICE: ${INDICCONFORMER_DEVICE:-cpu}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    command:
+      - -m
+      - /models/${LLM_MODEL_FILE:-qwen3-1.7b.gguf}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8080"
+      - -c
+      - "${LLM_CTX_SIZE:-4096}"
+      - -ngl
+      - "${LLM_GPU_LAYERS:-24}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+

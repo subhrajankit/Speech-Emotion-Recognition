@@ -10,11 +10,13 @@ from ai.routing.language_router import (
     INDIC_LANGUAGES,
     SENSEVOICE_LANGUAGES,
 )
+from ai.routing.language_identifier import VoxLingua107LanguageIdentifier
 
 __all__ = [
     "LanguageRouter",
     "RoutingDecision",
     "LanguageIdentifier",
+    "VoxLingua107LanguageIdentifier",
     "INDIC_LANGUAGES",
     "SENSEVOICE_LANGUAGES",
 ]

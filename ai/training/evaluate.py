@@ -19,6 +19,7 @@ import yaml
 
 from ai.models.emotion.config import EmotionModelConfig
 from ai.models.emotion.model import NumPyEmotionClassifier, EmotionClassifier, TORCH_AVAILABLE
+from ai.preprocessing.audio import load_and_preprocess_audio
 from ai.training.dataset import load_manifest_csv, DatasetManifestRecord
 from ai.training.metrics import compute_metrics, ClassificationMetrics
 
@@ -108,7 +109,8 @@ def evaluate_sensevoice_baseline(
             continue
 
         try:
-            res = engine.transcribe(record.file_path)
+            audio = load_and_preprocess_audio(record.file_path, target_sr=16000)
+            res = engine.transcribe(audio, sample_rate=16000)
             raw_emo = res.emotion or "neutral"
             mapped = mapping.get(raw_emo.upper(), mapping.get(f"<|{raw_emo.upper()}|>", "neutral"))
             if mapped in label_to_id:

@@ -1,0 +1,2 @@
+recording_id,speaker_id,language_gt,recording_type,duration_seconds,sample_rate,channels,format,environment,consent_confirmed,provenance,split,notes
+HI_FIXED_001,HI_S00,hi,read,5.28,48000,1,wav,unknown,yes,existing repo fixture; speaker-confirmed prompt documented in docs/architecture/language-routing.md,fixed_regression,pre-existing authentic sample; byte-identical; 4B baseline sa@0.448

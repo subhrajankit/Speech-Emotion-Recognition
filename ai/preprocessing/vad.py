@@ -6,6 +6,7 @@ Guarantees explicit no-speech results for empty, silent, or sub-second audio.
 import collections
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 import numpy as np
@@ -46,6 +47,7 @@ class SileroVAD:
         self.context = np.zeros((1, self.context_size), dtype=np.float32)
         self.sr = np.array(16000, dtype=np.int64)
         self.is_loaded = False
+        self._lock = threading.Lock()
         self._load_model()
 
     def _load_model(self):
@@ -137,34 +139,35 @@ class SileroVAD:
                 num_speech_frames=0
             )
 
-        self.reset()
-        num_frames = len(audio) // frame_size
-        speech_frames = 0
-        probabilities: List[float] = []
+        with self._lock:
+            self.reset()
+            num_frames = len(audio) // frame_size
+            speech_frames = 0
+            probabilities: List[float] = []
 
-        # Ensure float32 in [-1.0, 1.0]
-        if np.issubdtype(audio.dtype, np.integer):
-            samples = audio.astype(np.float32) / float(np.iinfo(audio.dtype).max)
-        else:
-            samples = audio.astype(np.float32)
+            # Ensure float32 in [-1.0, 1.0]
+            if np.issubdtype(audio.dtype, np.integer):
+                samples = audio.astype(np.float32) / float(np.iinfo(audio.dtype).max)
+            else:
+                samples = audio.astype(np.float32)
 
-        for i in range(num_frames):
-            frame = samples[i * frame_size : (i + 1) * frame_size]
-            prob = self.process_frame(frame)
-            probabilities.append(prob)
-            if prob >= self.threshold:
-                speech_frames += 1
+            for i in range(num_frames):
+                frame = samples[i * frame_size : (i + 1) * frame_size]
+                prob = self.process_frame(frame)
+                probabilities.append(prob)
+                if prob >= self.threshold:
+                    speech_frames += 1
 
-        speech_duration_ms = (speech_frames * frame_size / sample_rate) * 1000.0
-        has_speech = speech_duration_ms >= self.min_speech_duration_ms
-        avg_prob = float(np.mean(probabilities)) if probabilities else 0.0
+            speech_duration_ms = (speech_frames * frame_size / sample_rate) * 1000.0
+            has_speech = speech_duration_ms >= self.min_speech_duration_ms
+            avg_prob = float(np.mean(probabilities)) if probabilities else 0.0
 
-        return VADResult(
-            has_speech=has_speech,
-            speech_probability=round(avg_prob, 3),
-            speech_duration_ms=round(speech_duration_ms, 1),
-            num_speech_frames=speech_frames
-        )
+            return VADResult(
+                has_speech=has_speech,
+                speech_probability=round(avg_prob, 3),
+                speech_duration_ms=round(speech_duration_ms, 1),
+                num_speech_frames=speech_frames
+            )
 
     def classify_buffer(self, pcm_bytes: bytes, threshold: Optional[float] = None) -> bool:
         """
@@ -291,18 +294,15 @@ class VADSpeechSegmenter:
         return completed_utterance
 
     def flush(self) -> Optional[bytes]:
-        """Flushes any accumulated speech audio (e.g. on client manual disconnect or forced end)."""
+        """
+        Flushes accumulated speech audio on manual end/disconnect.
+        Returns None when the segmenter is idle: the rolling pre-speech buffer
+        holds only non-speech frames and must never be submitted to ASR as an
+        utterance (prevents phantom transcriptions on stop).
+        """
         if self.in_speech and len(self.speech_buffer) > 0:
             data = bytes(self.speech_buffer)
             self.reset()
             return data
-        if len(self.pre_buffer) > 0:
-            buf = bytearray()
-            for frame in self.pre_buffer:
-                buf.extend(frame)
-            if self.remainder_bytes:
-                buf.extend(self.remainder_bytes)
-            self.reset()
-            return bytes(buf)
         self.reset()
         return None

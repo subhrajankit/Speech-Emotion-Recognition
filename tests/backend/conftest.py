@@ -13,15 +13,45 @@ from backend.app.core.config import settings
 from backend.app.main import create_app
 
 
-from tests.test_doubles import FakeSenseVoiceEngine, FakeIndicConformerEngine, FakeEmbeddings
+from tests.test_doubles import (
+    FakeSenseVoiceEngine,
+    FakeIndicConformerEngine,
+    FakeEmbeddings,
+    FakeStreamingSileroVAD,
+)
 from backend.app.services.speech_service import speech_service
 from backend.app.services.rag_service import rag_service
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_test_db():
+    """
+    Creates the schema once per session on the isolated test database.
+    tests/conftest.py sets DATABASE_URL to a temp SQLite file before any
+    backend.app import, so engine/SessionLocal (and therefore get_db,
+    get_db_session, and history_service persistence) all bind to it.
+    """
+    import backend.app.models  # noqa: F401 - register all tables on Base
+    from backend.app.core.database import Base, engine
+
+    Base.metadata.create_all(bind=engine)
+    yield
+    engine.dispose()
+
+
 @pytest.fixture
-def app():
+def app(monkeypatch):
     """Provides a fresh FastAPI application instance with explicit test doubles injected."""
+    original_auth_required = settings.AUTH_REQUIRED
     settings.AUTH_REQUIRED = False
+    # Synthetic test tones score ~0.0 on real Silero VAD; without a
+    # speech-positive double, stop-flush tests could only pass via the removed
+    # idle pre-buffer path. Default: every frame is speech so stop-flush
+    # exercises the genuine in-speech segment.
+    monkeypatch.setattr(
+        "backend.app.websocket.speech_socket.SileroVAD",
+        FakeStreamingSileroVAD,
+    )
     from ai.routing.language_router import LanguageRouter
     fake_sv = FakeSenseVoiceEngine()
     fake_ic = FakeIndicConformerEngine()
@@ -43,7 +73,8 @@ def app():
         rag_service._init_error = None
 
     application = create_app()
-    return application
+    yield application
+    settings.AUTH_REQUIRED = original_auth_required
 
 
 @pytest.fixture

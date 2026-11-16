@@ -25,6 +25,7 @@ import {
   createStopMessage,
   createPingMessage,
 } from '../services/protocol';
+import { resolveWsCloseOutcome } from '../lib/wsClosePolicy';
 
 export interface UseWebSocketOptions {
   languageHint?: string | null;
@@ -41,6 +42,8 @@ export interface UseWebSocketOptions {
   onError?: (err: ErrorMessage) => void;
   onBinaryMessage?: (buffer: ArrayBuffer) => void;
   onReady?: () => void;
+  /** Fired once per auth-rejection episode when the server closes with 1008. */
+  onAuthRejected?: () => void;
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
@@ -53,6 +56,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   const isManuallyClosedRef = useRef(false);
+  // Dedupes 1008 auth rejections: set on first policy close, cleared only when
+  // a connection becomes fully ready again.
+  const authRejectedRef = useRef(false);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
@@ -146,6 +152,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           switch (message.type) {
             case 'ready':
               setIsServerReady(true);
+              authRejectedRef.current = false;
               optionsRef.current.onReady?.();
               break;
 
@@ -208,15 +215,44 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         setIsServerReady(false);
         socketRef.current = null;
 
-        if (isManuallyClosedRef.current) {
+        const outcome = resolveWsCloseOutcome(
+          event.code,
+          isManuallyClosedRef.current,
+          authRejectedRef.current
+        );
+
+        if (outcome === 'manual') {
           setConnectionState('disconnected');
           return;
         }
 
-        setConnectionState('reconnecting');
-        if (event.code === 1008) {
-          setLastError('Authentication policy violation (close code 1008). Sign-in required.');
+        if (outcome === 'auth_rejected_notify' || outcome === 'auth_rejected_silent') {
+          // Policy rejection (1008): the credentials we sent were refused.
+          // Do NOT enter the backoff loop with the same rejected token.
+          setConnectionState('disconnected');
+          setLastError(
+            'Authentication rejected by the server (session expired or invalid token). Please sign in again.'
+          );
+
+          if (outcome === 'auth_rejected_notify') {
+            authRejectedRef.current = true;
+            optionsRef.current.onAuthRejected?.();
+
+            // Exactly one deferred reconnect: gives React a tick to flush the
+            // credential-clearing update so optionsRef re-reads authToken=null
+            // (anonymous access) or the fresh token after re-login. A repeated
+            // 1008 lands in 'auth_rejected_silent' and stops the loop.
+            reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectTimeoutRef.current = null;
+              if (!isManuallyClosedRef.current) {
+                connect();
+              }
+            }, 500);
+          }
+          return;
         }
+
+        setConnectionState('reconnecting');
 
         // Exponential backoff: min 1s, max 10s
         const backoffMs = Math.min(
@@ -260,6 +296,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const disconnect = useCallback(() => {
     isManuallyClosedRef.current = true;
+    authRejectedRef.current = false;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;

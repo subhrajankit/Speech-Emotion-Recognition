@@ -4,6 +4,7 @@
  */
 
 import { getApiUrl } from '../lib/env';
+import { createHttpError } from '../lib/httpErrors';
 import { HealthResponse } from '../types/speech';
 import {
   SessionSummary,
@@ -102,7 +103,7 @@ export async function getMe(token: string): Promise<UserResponse> {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to fetch profile (${response.status})`);
+    throw createHttpError(response.status, errorData.detail, `Failed to fetch profile (${response.status})`);
   }
 
   return response.json();
@@ -124,7 +125,7 @@ export async function fetchHistorySessions(token: string): Promise<SessionSummar
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to fetch sessions (${response.status})`);
+    throw createHttpError(response.status, errorData.detail, `Failed to fetch sessions (${response.status})`);
   }
 
   return response.json();
@@ -146,7 +147,7 @@ export async function fetchSessionDetail(sessionId: string, token: string): Prom
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to fetch session detail (${response.status})`);
+    throw createHttpError(response.status, errorData.detail, `Failed to fetch session detail (${response.status})`);
   }
 
   return response.json();
@@ -171,7 +172,7 @@ export async function deleteSession(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to delete session (${response.status})`);
+    throw createHttpError(response.status, errorData.detail, `Failed to delete session (${response.status})`);
   }
 
   return response.json();
@@ -193,7 +194,7 @@ export async function purgeAllHistory(token: string): Promise<DeleteHistoryRespo
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to purge history (${response.status})`);
+    throw createHttpError(response.status, errorData.detail, `Failed to purge history (${response.status})`);
   }
 
   return response.json();

@@ -1,7 +1,12 @@
 """
-Independent Emotion Perception Engine.
-Loads trained checkpoints behind an EmotionEngine interface.
-Converts raw audio to emotion labels and calibrated probability scores.
+Independent Emotion Perception Engine — PLACEHOLDER SCAFFOLD.
+
+WARNING: Wav2Vec2EmotionEngine is NOT a trained SER model. Its feature
+extractor emits deterministic pseudo-random projections and its classifier
+head is randomly initialized; no acoustic backbone or learned weights exist.
+Non-mock construction raises NotImplementedError. Only mock=True is supported,
+for tests and smoke checks, and its output is explicitly labeled as mock.
+
 Strictly decoupled from ASR, LLM, RAG, and TTS.
 """
 
@@ -36,6 +41,7 @@ class EmotionResult:
     scores: Dict[str, float]
     processing_time_ms: float
     model_version: str
+    raw_label: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -76,7 +82,16 @@ class Wav2Vec2EmotionEngine(EmotionEngine):
     ):
         self.mock = mock
         self.device = device
-        self.model_version = "wav2vec2_emotion_v1"
+        # Mock output is always labeled so it can never be mistaken for real SER.
+        self.model_version = "wav2vec2_emotion_mock" if mock else "wav2vec2_emotion_v1"
+
+        if not mock:
+            raise NotImplementedError(
+                "Wav2Vec2EmotionEngine is a placeholder scaffold, not a trained SER model: "
+                "extract_features() emits pseudo-random projections and the classifier head "
+                "is randomly initialized. Non-mock use is disabled to prevent fabricated "
+                "emotion predictions. Pass mock=True for tests/smoke checks only."
+            )
 
         # Load configuration
         if config is not None:

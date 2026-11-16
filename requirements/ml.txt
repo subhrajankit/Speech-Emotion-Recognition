@@ -1,0 +1,17 @@
+# VoiceSense AI — Machine Learning & RAG Dependencies
+# Docker builds pre-install torch/torchaudio from CPU (default) or CUDA PyTorch wheel index via build args.
+# Standalone local CPU install:
+#   pip install -r requirements/runtime.txt
+#   pip install -r requirements/ml.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+torch>=2.2.0
+torchaudio>=2.2.0
+funasr>=1.0.0
+transformers>=4.40.0
+huggingface-hub>=0.23.0
+modelscope>=1.15.0
+sentence-transformers>=3.0.0
+faiss-cpu>=1.8.0
+# Optional Tier-2 spoken LID (VoxLingua107); only needed when LID_ENABLED=true
+speechbrain>=1.0.0
+

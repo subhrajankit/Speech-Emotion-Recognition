@@ -70,11 +70,12 @@ def test_websocket_start_audio_stop_sequence(client):
         assert "processing_time_ms" in speech_result
 
 
-def test_websocket_hindi_language_hint_returns_emotion_none(client):
+def test_websocket_hindi_language_hint_returns_emotion_none(client, monkeypatch):
     """
     Verifies WebSocket session configured with language_hint='hi'
     routes to IndicConformer and returns emotion=None (null).
     """
+    monkeypatch.setattr(settings, "ASR_ENGLISH_ONLY", False)
     with client.websocket_connect("/ws/speech") as ws:
         ws.send_json({
             "type": "start",
@@ -189,6 +190,20 @@ def test_websocket_auth_required_accepted_with_token(client):
     """Verifies that valid JWT auth_token in start frame permits session when AUTH_REQUIRED=true."""
     settings.AUTH_REQUIRED = True
     try:
+        from backend.app.core.database import get_db_session
+        from backend.app.core.security import hash_password
+        from backend.app.models.user import User
+
+        with get_db_session() as db:
+            if db.query(User).filter(User.id == "test_user_123").first() is None:
+                db.add(User(
+                    id="test_user_123",
+                    username="testuser",
+                    hashed_password=hash_password("test_password_123"),
+                    is_active=True,
+                ))
+                db.commit()
+
         token = create_access_token(user_id="test_user_123", username="testuser")
         with client.websocket_connect("/ws/speech") as ws:
             ws.send_json({
@@ -978,3 +993,523 @@ def test_websocket_slow_loading_engine_answers_pings_and_delivers_status_events(
 
 
 
+
+
+def test_websocket_rejects_jwt_with_nonexistent_user(client):
+    """
+    A correctly signed JWT whose 'sub' references no users row must be
+    rejected with AUTH_FAILED and must not create sessions/history rows.
+    """
+    import uuid
+    from backend.app.core.database import get_db_session
+    from backend.app.models.session import Session as DBSession
+    from backend.app.models.prediction import Prediction
+
+    ghost_id = f"usr_ghost_{uuid.uuid4().hex[:8]}"
+    sess_id = f"sess_ghost_{uuid.uuid4().hex[:8]}"
+    token = create_access_token(user_id=ghost_id, username="ghost")
+
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "session_id": sess_id,
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en",
+            "auth_token": token,
+        })
+        error = ws.receive_json()
+        assert error.get("type") == "error"
+        assert error.get("code") == "AUTH_FAILED"
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+
+    with get_db_session() as db:
+        assert db.query(DBSession).filter(DBSession.id == sess_id).count() == 0
+        assert db.query(DBSession).filter(DBSession.user_id == ghost_id).count() == 0
+        assert db.query(Prediction).filter(Prediction.session_id == sess_id).count() == 0
+
+
+def test_websocket_accepts_jwt_for_existing_user(client):
+    """A valid JWT for an existing user passes the subject check and reaches ready."""
+    import uuid
+    from backend.app.core.database import get_db_session
+    from backend.app.core.security import hash_password
+    from backend.app.models.user import User
+
+    user_id = f"usr_ws_{uuid.uuid4().hex[:8]}"
+    with get_db_session() as db:
+        db.add(User(
+            id=user_id,
+            username=f"ws_{uuid.uuid4().hex[:8]}",
+            hashed_password=hash_password("test_password_123"),
+            is_active=True,
+        ))
+        db.commit()
+
+    token = create_access_token(user_id=user_id, username="ws_user")
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "session_id": f"sess_ws_{uuid.uuid4().hex[:8]}",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en",
+            "auth_token": token,
+        })
+        assert ws.receive_json().get("type") == "ready"
+
+
+def test_websocket_cannot_append_history_to_foreign_session(client):
+    """
+    Cross-user session isolation: user A supplying user B's session_id in the
+    WS start frame may receive a normal speech_result, but history_service's
+    ownership guard must refuse persistence — B's session and its records
+    remain byte-for-byte unchanged.
+    """
+    import uuid
+    from datetime import datetime, timezone
+    from backend.app.core.database import get_db_session
+    from backend.app.core.security import hash_password
+    from backend.app.models.user import User
+    from backend.app.models.session import Session as DBSession
+    from backend.app.models.prediction import Prediction
+    from backend.app.models.transcript import Transcript
+    from backend.app.models.emotion import EmotionResult
+    from backend.app.models.message import Message
+
+    suffix = uuid.uuid4().hex[:8]
+    user_a_id = f"usr_iso_a_{suffix}"
+    user_b_id = f"usr_iso_b_{suffix}"
+    sess_b_id = f"sess_iso_b_{suffix}"
+
+    with get_db_session() as db:
+        for uid, uname in ((user_a_id, "iso_a"), (user_b_id, "iso_b")):
+            db.add(User(
+                id=uid, username=f"{uname}_{suffix}",
+                hashed_password=hash_password("test_password_123"),
+                is_active=True,
+            ))
+        pred_b = Prediction(
+            id=str(uuid.uuid4()), session_id=sess_b_id,
+            processing_time_ms=123.0, created_at=datetime.now(timezone.utc),
+        )
+        db.add(DBSession(
+            id=sess_b_id, user_id=user_b_id, primary_language="en",
+            created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        ))
+        db.add(pred_b)
+        db.flush()
+        db.add(Transcript(
+            id=str(uuid.uuid4()), prediction_id=pred_b.id, session_id=sess_b_id,
+            text="B private turn", language="en",
+        ))
+        db.add(EmotionResult(
+            id=str(uuid.uuid4()), prediction_id=pred_b.id, session_id=sess_b_id,
+            primary_emotion="neutral",
+        ))
+        db.add(Message(
+            id=str(uuid.uuid4()), session_id=sess_b_id, prediction_id=pred_b.id,
+            role="assistant", text="B reply",
+        ))
+        db.commit()
+        pred_b_id = pred_b.id
+
+    def _counts() -> dict:
+        with get_db_session() as db:
+            return {
+                "sessions": db.query(DBSession).filter(DBSession.id == sess_b_id).count(),
+                "predictions": db.query(Prediction).filter(Prediction.session_id == sess_b_id).count(),
+                "transcripts": db.query(Transcript).filter(Transcript.session_id == sess_b_id).count(),
+                "emotion_results": db.query(EmotionResult).filter(EmotionResult.session_id == sess_b_id).count(),
+                "messages": db.query(Message).filter(Message.session_id == sess_b_id).count(),
+            }
+
+    baseline = _counts()
+    assert baseline == {"sessions": 1, "predictions": 1, "transcripts": 1,
+                        "emotion_results": 1, "messages": 1}
+
+    token_a = create_access_token(user_id=user_a_id, username="iso_a")
+    with client.websocket_connect("/ws/speech") as ws:
+        ws.send_json({
+            "type": "start",
+            "session_id": sess_b_id,
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language_hint": "en",
+            "auth_token": token_a,
+        })
+        assert ws.receive_json().get("type") == "ready"
+
+        t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+        samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+        pcm_bytes = samples.tobytes()
+        for i in range(0, len(pcm_bytes), 1024):
+            ws.send_bytes(pcm_bytes[i:i + 1024])
+        ws.send_json({"type": "stop"})
+
+        got_speech_result = False
+        for _ in range(10):
+            ev = ws.receive_json()
+            if ev.get("type") == "speech_result":
+                got_speech_result = True
+                break
+        assert got_speech_result, "Expected normal speech_result despite foreign session_id"
+
+    assert _counts() == baseline, "User B's session history was mutated by user A's turn"
+
+    with get_db_session() as db:
+        sess = db.query(DBSession).filter(DBSession.id == sess_b_id).one()
+        assert sess.user_id == user_b_id
+        assert db.query(Prediction).filter(
+            Prediction.session_id == sess_b_id, Prediction.id != pred_b_id
+        ).count() == 0
+
+
+def _silent_pcm16_bytes(duration_s: float = 1.0) -> bytes:
+    """Digital-silence PCM16 mono 16kHz payload."""
+    return b"\x00\x00" * int(16000 * duration_s)
+
+
+def _sine_pcm16_bytes(duration_s: float = 1.0) -> bytes:
+    t = np.linspace(0, duration_s, int(16000 * duration_s), endpoint=False, dtype=np.float32)
+    samples = (0.5 * np.sin(2 * np.pi * 300 * t) * 32767.0).astype(np.int16)
+    return samples.tobytes()
+
+
+def _send_start(ws, language_hint="en"):
+    ws.send_json({
+        "type": "start",
+        "sample_rate": 16000,
+        "encoding": "pcm_s16le",
+        "language_hint": language_hint,
+    })
+    assert ws.receive_json().get("type") == "ready"
+
+
+def _send_pcm(ws, pcm_bytes: bytes, chunk_size: int = 1024):
+    for i in range(0, len(pcm_bytes), chunk_size):
+        ws.send_bytes(pcm_bytes[i:i + chunk_size])
+
+
+def _drain_events(ws, max_events: int = 12, stop_types=("speech_result", "llm_done", "error")):
+    events = []
+    for _ in range(max_events):
+        try:
+            ev = ws.receive_json()
+        except Exception:
+            break
+        events.append(ev)
+        if ev.get("type") in stop_types:
+            break
+    return events
+
+
+def test_websocket_silent_stop_emits_no_speech_status(client, monkeypatch):
+    """
+    Chunk 9.3C: a stop-flush containing only silence must NOT emit
+    speech_result, must NOT start an LLM turn, and must emit a non-error
+    status event with state 'no_speech'. The session stays usable.
+    """
+    import httpx
+    from ai.inference.types import SpeechResult
+    from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+
+    async def mock_no_speech_transcribe(*args, **kwargs):
+        return SpeechResult(
+            transcript="",
+            language="unknown",
+            emotion=None,
+            confidence=None,
+            processing_time_ms=5,
+            model_version="fake-no-speech",
+            debug={"status": "no_speech_detected", "vad_has_speech": False},
+        )
+
+    llm_calls = []
+
+    async def counting_llm_handler(request: httpx.Request) -> httpx.Response:
+        llm_calls.append(request)
+        return httpx.Response(200, content=b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n')
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(counting_llm_handler))
+    monkeypatch.setattr(speech_service, "transcribe_pcm16_bytes", mock_no_speech_transcribe)
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        _send_start(ws)
+        _send_pcm(ws, _silent_pcm16_bytes(1.0))
+        ws.send_json({"type": "stop"})
+
+        events = _drain_events(ws, stop_types=("status", "speech_result", "error", "llm_done"))
+        types = [e.get("type") for e in events]
+
+        assert "speech_result" not in types, f"no-speech must not emit speech_result: {events}"
+        assert "llm_done" not in types and "llm_delta" not in types
+        assert "error" not in types, f"ordinary silence must not be an error: {events}"
+
+        no_speech = next(
+            (e for e in events if e.get("type") == "status" and e.get("state") == "no_speech"),
+            None,
+        )
+        assert no_speech is not None, f"expected status no_speech event, got {events}"
+        assert no_speech.get("message")
+
+        # LLM was never invoked for the silent turn.
+        assert llm_calls == [], "LLM must not run for confirmed no-speech"
+
+        # Recording session remains usable: ping/pong and a fresh start cycle.
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json().get("type") == "pong"
+
+        _send_start(ws)
+        _send_pcm(ws, _sine_pcm16_bytes(0.5))
+        ws.send_json({"type": "stop"})
+        # Second cycle still produces no_speech (mock always returns empty) —
+        # the important part is the socket accepted the new start frame.
+        events2 = _drain_events(ws, stop_types=("status", "speech_result", "error"))
+        assert any(e.get("type") == "status" and e.get("state") == "no_speech" for e in events2)
+
+
+def test_websocket_no_speech_does_not_consume_rate_limit_slot(client, monkeypatch):
+    """
+    Chunk 9.3C: the pre-inference rate-limit reservation is refunded when
+    inference confirms no speech, so a subsequent genuine utterance within
+    the same minute is not rejected.
+    """
+    import httpx
+    from ai.inference.types import SpeechResult
+    from backend.app.core.rate_limiter import session_rate_limiter
+    from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+
+    call_count = {"n": 0}
+
+    async def mock_transcribe(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return SpeechResult(
+                transcript="",
+                language="unknown",
+                emotion=None,
+                confidence=None,
+                processing_time_ms=5,
+                model_version="fake-no-speech",
+                debug={"status": "no_speech_detected"},
+            )
+        return SpeechResult(
+            transcript="Hello there, this is real speech.",
+            language="en",
+            emotion="neutral",
+            confidence=None,
+            processing_time_ms=5,
+            model_version="fake-speech",
+        )
+
+    async def ok_llm_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(ok_llm_handler))
+    monkeypatch.setattr(speech_service, "transcribe_pcm16_bytes", mock_transcribe)
+    monkeypatch.setattr(llm_service, "_custom_client", mock_client)
+    monkeypatch.setattr(session_rate_limiter, "max_utterances", 1)
+
+    with client.websocket_connect("/ws/speech") as ws:
+        # Cycle 1: silent stop -> no_speech (slot must be refunded).
+        _send_start(ws)
+        _send_pcm(ws, _silent_pcm16_bytes(1.0))
+        ws.send_json({"type": "stop"})
+        events1 = _drain_events(ws, stop_types=("status", "speech_result", "error"))
+        assert any(e.get("type") == "status" and e.get("state") == "no_speech" for e in events1)
+        assert not any(e.get("code") == "RATE_LIMIT_EXCEEDED" for e in events1)
+
+        # Cycle 2: genuine utterance on the SAME session_id bucket. With only
+        # 1 utterance/min allowed, this succeeds only if cycle 1 was refunded.
+        _send_start(ws)
+        _send_pcm(ws, _sine_pcm16_bytes(0.5))
+        ws.send_json({"type": "stop"})
+        events2 = _drain_events(ws, stop_types=("speech_result", "error"))
+        types2 = [e.get("type") for e in events2]
+
+        assert "RATE_LIMIT_EXCEEDED" not in [e.get("code") for e in events2], (
+            f"refunded no-speech slot was still consumed: {events2}"
+        )
+        assert "speech_result" in types2, f"expected normal speech_result, got {events2}"
+        sr = next(e for e in events2 if e.get("type") == "speech_result")
+        assert sr.get("transcript") == "Hello there, this is real speech."
+
+
+def test_websocket_idle_stop_never_submits_prebuffer_to_asr(client, monkeypatch):
+    """
+    Regression (phantom stop-flush): when the VAD segmenter is idle, stop must
+    NOT submit the rolling non-speech pre-buffer to ASR. No speech_result, no
+    LLM invocation, no rate-limit consumption — only a non-error no_speech
+    status. Repeated stop is a no-op and the socket stays usable.
+    """
+    import httpx
+    from ai.inference.types import SpeechResult
+    from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+    import backend.app.websocket.speech_socket as speech_socket_mod
+    from tests.test_doubles import FakeStreamingSileroVAD
+
+    # VAD sees only non-speech: the segmenter stays idle and only its
+    # pre-buffer accumulates.
+    monkeypatch.setattr(
+        speech_socket_mod,
+        "SileroVAD",
+        lambda *a, **k: FakeStreamingSileroVAD(probs=0.0),
+    )
+
+    asr_calls = []
+
+    async def counting_transcribe(*args, **kwargs):
+        asr_calls.append(1)
+        return SpeechResult(
+            transcript="phantom transcript",
+            language="en",
+            emotion=None,
+            confidence=None,
+            processing_time_ms=1,
+            model_version="fake",
+        )
+
+    llm_calls = []
+
+    async def counting_llm_handler(request: httpx.Request) -> httpx.Response:
+        llm_calls.append(request)
+        return httpx.Response(200, content=b'data: [DONE]\n\n')
+
+    monkeypatch.setattr(speech_service, "transcribe_pcm16_bytes", counting_transcribe)
+    monkeypatch.setattr(
+        llm_service, "_custom_client",
+        httpx.AsyncClient(transport=httpx.MockTransport(counting_llm_handler)),
+    )
+
+    with client.websocket_connect("/ws/speech") as ws:
+        _send_start(ws)
+        # 1s of digital silence: fills the idle pre-buffer but never speech.
+        _send_pcm(ws, _silent_pcm16_bytes(1.0))
+        ws.send_json({"type": "stop"})
+        # Repeated stop must be a no-op.
+        ws.send_json({"type": "stop"})
+
+        events = _drain_events(ws, max_events=10, stop_types=("status", "speech_result", "error", "llm_done"))
+        types = [e.get("type") for e in events]
+
+        assert "speech_result" not in types, f"idle stop must not emit speech_result: {events}"
+        assert "llm_done" not in types and "llm_delta" not in types
+        assert "error" not in types, f"idle stop must not be an error: {events}"
+        assert any(e.get("type") == "status" and e.get("state") == "no_speech" for e in events), (
+            f"expected no_speech status, got {events}"
+        )
+        assert asr_calls == [], "idle pre-buffer must never reach ASR"
+        assert llm_calls == [], "no LLM turn may start without a speech_result"
+
+        # Socket remains usable after repeated stops.
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json().get("type") == "pong"
+
+
+def test_websocket_stop_during_active_speech_flushes_segment(client, monkeypatch):
+    """
+    Stop while genuine speech is in progress preserves the final-segment
+    flush: the buffered utterance is submitted once with
+    debug.flushed_on_stop=True.
+    """
+    import httpx
+    from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+
+    real_transcribe = speech_service.transcribe_pcm16_bytes
+    calls = []
+
+    async def wrapped(*args, **kwargs):
+        calls.append(1)
+        return await real_transcribe(*args, **kwargs)
+
+    async def ok_llm_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    monkeypatch.setattr(speech_service, "transcribe_pcm16_bytes", wrapped)
+    monkeypatch.setattr(
+        llm_service, "_custom_client",
+        httpx.AsyncClient(transport=httpx.MockTransport(ok_llm_handler)),
+    )
+
+    with client.websocket_connect("/ws/speech") as ws:
+        _send_start(ws)
+        _send_pcm(ws, _sine_pcm16_bytes(0.5))
+        ws.send_json({"type": "stop"})
+
+        events = _drain_events(ws, stop_types=("speech_result", "error", "llm_done"))
+        types = [e.get("type") for e in events]
+        assert "speech_result" in types, f"expected flushed speech_result, got {events}"
+        sr = next(e for e in events if e.get("type") == "speech_result")
+        assert sr.get("debug", {}).get("flushed_on_stop") is True
+        assert calls == [1], "exactly one ASR submission for the in-progress segment"
+
+
+def test_websocket_stop_after_completed_segment_no_phantom_result(client, monkeypatch):
+    """
+    Regression: a VAD silence-timeout completion mid-recording produces one
+    speech_result; the later stop (segmenter idle, only trailing silence in
+    the pre-buffer) must not produce a second phantom speech_result or a
+    second ASR call.
+    """
+    import httpx
+    from backend.app.services.speech_service import speech_service
+    from backend.app.services.llm_service import llm_service
+    import backend.app.websocket.speech_socket as speech_socket_mod
+    from tests.test_doubles import FakeStreamingSileroVAD
+
+    # 10 speech frames then 30 non-speech frames: the 21-frame (700ms)
+    # silence threshold completes the utterance mid-stream; remaining frames
+    # are idle pre-buffer only.
+    monkeypatch.setattr(
+        speech_socket_mod,
+        "SileroVAD",
+        lambda *a, **k: FakeStreamingSileroVAD(probs=[0.9] * 10 + [0.0] * 30),
+    )
+
+    real_transcribe = speech_service.transcribe_pcm16_bytes
+    calls = []
+
+    async def wrapped(*args, **kwargs):
+        calls.append(1)
+        return await real_transcribe(*args, **kwargs)
+
+    async def ok_llm_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    monkeypatch.setattr(speech_service, "transcribe_pcm16_bytes", wrapped)
+    monkeypatch.setattr(
+        llm_service, "_custom_client",
+        httpx.AsyncClient(transport=httpx.MockTransport(ok_llm_handler)),
+    )
+
+    with client.websocket_connect("/ws/speech") as ws:
+        _send_start(ws)
+        # Exactly 40 frame-sized chunks (1024 bytes each): 10 speech + 30 silence.
+        _send_pcm(ws, _sine_pcm16_bytes(1.28))
+        ws.send_json({"type": "stop"})
+
+        events = _drain_events(ws, max_events=25, stop_types=("llm_done", "error"))
+        speech_results = [e for e in events if e.get("type") == "speech_result"]
+
+        assert len(speech_results) == 1, (
+            f"expected exactly one speech_result (no phantom), got {len(speech_results)}: {events}"
+        )
+        sr = speech_results[0]
+        assert sr.get("debug", {}).get("flushed_on_stop") is False
+        assert calls == [1], f"ASR must run exactly once, got {len(calls)} calls"

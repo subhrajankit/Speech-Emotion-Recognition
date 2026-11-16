@@ -13,7 +13,7 @@ from backend.app.services.rag_service import RAGService, rag_service
 from rag.ingestion import run_ingestion
 
 
-from tests.test_doubles import FakeEmbeddings
+from tests.test_doubles import FakeEmbeddings, FakeStreamingSileroVAD
 
 
 @pytest.fixture
@@ -137,6 +137,17 @@ def test_websocket_knowledge_query_and_chat_turn_events(monkeypatch, tmp_path):
     from backend.app.services.speech_service import speech_service
     from backend.app.services.llm_service import llm_service
     from ai.inference.types import SpeechResult
+
+    # This test builds TestClient(app) directly (not the `app` fixture), so the
+    # conftest VAD double does not apply. The payload below is digital silence,
+    # which real Silero VAD correctly classifies as non-speech — under the
+    # anti-phantom-flush contract that yields no_speech, not speech_result.
+    # Inject the speech-positive streaming VAD double so the stop-flush path
+    # exercises a genuine in-speech segment.
+    monkeypatch.setattr(
+        "backend.app.websocket.speech_socket.SileroVAD",
+        FakeStreamingSileroVAD,
+    )
 
     # Populate temporary index
     fixtures_dir = Path("tests/fixtures/sample_docs")

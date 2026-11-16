@@ -1,6 +1,7 @@
 # Speech Emotion Recognition (SER) Training & Evaluation Pipeline
 
-**Pipeline Status:** Verified Reproducible  
+**Pipeline Status:** Scaffold / Placeholder — NOT a trained model  
+**Quarantine (Chunk 6.1):** `ai.training.train` does not perform real acoustic training; it saves random-initialization weights as `untrained_init_weights.npz`. `Wav2Vec2EmotionEngine` raises `NotImplementedError` unless `mock=True`. Live product emotion is the discrete SenseVoice tag path only.
 **Target Architecture:** `ai/training/`, `ai/models/emotion/`, `ai/inference/emotion.py`  
 **Hardware Target:** NVIDIA GeForce RTX 2050 (4 GB VRAM) / CPU Fallback
 
@@ -24,10 +25,12 @@ python -m ai.training.train --config ai/training/config/crema_d_smoke.yaml --smo
    ```bash
    python -m ai.training.evaluate --manifest data/metadata/crema_d_test.csv --output-dir docs/training/runs/eval_crema_d_v1
    ```
-4. **Test Emotion Inference**:
+4. **Test Emotion Inference (mock mode only)**:
+   The engine is quarantined: non-mock construction raises `NotImplementedError`.
    ```bash
-   python -c "from ai.inference.emotion import Wav2Vec2EmotionEngine; engine = Wav2Vec2EmotionEngine(); print(engine.classify('path/to/test.wav'))"
+   python -c "from ai.inference.emotion import Wav2Vec2EmotionEngine; engine = Wav2Vec2EmotionEngine(mock=True); print(engine.classify('path/to/test.wav'))"
    ```
+   Output is mock/synthetic (`model_version="wav2vec2_emotion_mock"`) — never use it as real SER.
 
 ---
 

@@ -171,6 +171,34 @@ class FakeSileroVAD:
         pass
 
 
+class FakeStreamingSileroVAD:
+    """
+    Explicit test double for the streaming SileroVAD used by VADSpeechSegmenter
+    in the /ws/speech endpoint. Synthetic test tones score ~0.0 on the real
+    Silero model, so WS tests need a speech-positive double to exercise the
+    genuine in-speech flush path (the idle pre-buffer path no longer submits
+    audio to ASR).
+
+    probs: constant float, or an iterable of per-frame probabilities consumed
+    in order (exhausted -> 0.0 silence).
+    """
+    def __init__(self, *args, probs=0.9, **kwargs):
+        if isinstance(probs, (int, float)):
+            self._probs = None
+            self._constant = float(probs)
+        else:
+            self._probs = list(probs)
+            self._constant = 0.0
+
+    def process_frame(self, frame_samples: np.ndarray) -> float:
+        if self._probs is not None:
+            return self._probs.pop(0) if self._probs else 0.0
+        return self._constant
+
+    def reset(self):
+        pass
+
+
 class FakeEmbeddings:
     """Explicit test double for sentence embeddings in unit/integration tests."""
     def __init__(self, model_id: str = "test-double-e5", dimension: int = 384):

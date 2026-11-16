@@ -19,10 +19,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartConsole }) => {
       reply: '"Take a breath. Let\'s step through the pipeline together and pinpoint where the state drops."'
     },
     {
-      title: 'Vernacular Code-Switching',
+      title: 'Multilingual Roadmap (Future)',
       prompt: '"Mera order abhi tak deliver nahi hua, can you track it?"',
-      userEmotion: 'Anxious / Hinglish detection',
-      assistantTone: 'Warm natural Hinglish cadence',
+      userEmotion: 'Roadmap: Indic language support',
+      assistantTone: 'Planned: code-mixed cadence',
       reply: '"Main abhi aapke shipment status ko check karke update deta hoon."'
     },
     {
@@ -59,7 +59,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartConsole }) => {
         </h1>
 
         <p style={{ maxWidth: '620px', fontSize: '1.1rem', color: 'var(--text-secondary)' }}>
-          A private, multilingual voice assistant powered by on-device speech models, acoustic emotion recognition, and sub-500ms streaming speech synthesis.
+          A private, English-first voice assistant powered by on-device speech models and discrete emotion tags, with multilingual Indic-language capabilities preserved for future expansion.
         </p>
 
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem' }}>
@@ -135,9 +135,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartConsole }) => {
           <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', background: 'var(--color-signal-glow)', color: 'var(--color-signal)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
             <Languages size={22} />
           </div>
-          <h3 style={{ marginBottom: '0.5rem' }}>Indic Vernacular & Code-Mixing</h3>
+          <h3 style={{ marginBottom: '0.5rem' }}>Multilingual Roadmap</h3>
           <p style={{ fontSize: '0.9rem' }}>
-            Native dual-ASR architecture routing English, Hindi, and 21 official Indian languages with specialized heuristics for spontaneous Hinglish code-switching.
+            English voice intelligence today, with multilingual Indic-language ASR preserved in the codebase for future expansion.
           </p>
         </div>
       </section>

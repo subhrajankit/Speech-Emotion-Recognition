@@ -102,6 +102,16 @@ class HistoryService:
             now = datetime.now(timezone.utc)
             lang = speech_result_data.get("language")
 
+            # Ownership guard: never append turns to a session owned by a
+            # different user. session.user_id is immutable after creation, so
+            # this check inside the same transaction is race-safe.
+            if db_session and db_session.user_id != user_id:
+                logger.warning(
+                    f"[HistoryService] Rejecting persistence for session {session_id}: "
+                    "session is owned by a different user."
+                )
+                return None
+
             if not db_session:
                 db_session = DBSession(
                     id=session_id,
@@ -168,32 +178,32 @@ class HistoryService:
                 session_id=session_id,
                 text=stored_text,
                 language=speech_result_data.get("language", "unknown"),
-                script=speech_result_data.get("script", "latin"),
-                mixed_language=speech_result_data.get("mixed_language", False),
+                script=speech_result_data.get("script"),
+                mixed_language=speech_result_data.get("mixed_language"),
                 audio_events=speech_result_data.get("audio_events"),
                 created_at=now,
             )
             db.add(transcript)
 
-            # 5. Create EmotionResult row
-            debug_info = speech_result_data.get("debug") or {}
-            raw_tags = debug_info.get("raw_tags")
-            # Continuous valence/arousal approximation from discrete emotion
-            primary_emo = speech_result_data.get("emotion") or "neutral"
-            val, aro = self._map_emotion_coords(primary_emo)
-
-            emotion = EmotionResult(
-                id=str(uuid.uuid4()),
-                prediction_id=pred.id,
-                session_id=session_id,
-                primary_emotion=primary_emo,
-                confidence=1.0 if primary_emo != "neutral" else 0.8,
-                valence=val,
-                arousal=aro,
-                raw_tags=raw_tags,
-                created_at=now,
-            )
-            db.add(emotion)
+            # 5. Create EmotionResult row only when a real emotion label exists.
+            # confidence/valence/arousal stay NULL until genuine model scores are
+            # available — never fabricate constants or lookup-table approximations.
+            primary_emo = speech_result_data.get("emotion")
+            if primary_emo:
+                raw_tags = (speech_result_data.get("debug") or {}).get("raw_tags") or (speech_result_data.get("debug") or {}).get("emotion_raw_label")
+                conf_val = speech_result_data.get("confidence")
+                emotion = EmotionResult(
+                    id=str(uuid.uuid4()),
+                    prediction_id=pred.id,
+                    session_id=session_id,
+                    primary_emotion=primary_emo,
+                    confidence=conf_val if isinstance(conf_val, (int, float)) else None,
+                    valence=None,
+                    arousal=None,
+                    raw_tags=raw_tags,
+                    created_at=now,
+                )
+                db.add(emotion)
 
             # 6. Create Message rows (user utterance & assistant response)
             if stored_text:
@@ -223,20 +233,6 @@ class HistoryService:
             db.commit()
             logger.info(f"[HistoryService] Successfully persisted turn for session {session_id} (prediction {pred.id})")
             return pred.id
-
-    @staticmethod
-    def _map_emotion_coords(emotion: str) -> tuple[float, float]:
-        """Maps discrete emotion to approximate Russell Circumplex coordinates."""
-        coords = {
-            "happy": (0.8, 0.6),
-            "sad": (-0.7, -0.4),
-            "angry": (-0.6, 0.8),
-            "neutral": (0.0, 0.0),
-            "fearful": (-0.6, 0.6),
-            "disgusted": (-0.6, 0.2),
-            "surprised": (0.2, 0.8),
-        }
-        return coords.get(emotion.lower(), (0.0, 0.0))
 
     async def record_voice_turn(
         self,

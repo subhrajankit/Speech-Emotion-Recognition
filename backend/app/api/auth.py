@@ -4,7 +4,7 @@ Provides user registration, login, current profile, and token verification.
 """
 
 import uuid
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
@@ -103,35 +103,8 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# Backwards-compatibility endpoints for test harnesses and lightweight tokens
+# Token verification endpoint (issuance is exclusive to /login)
 # ---------------------------------------------------------------------------
-
-@router.post("/token")
-async def issue_auth_token(payload: Optional[Dict[str, Any]] = None):
-    """
-    Issues an HS256 JWT token for session establishment.
-    """
-    req_data = payload or {}
-    session_id = req_data.get("session_id") or f"sess_{uuid.uuid4().hex[:8]}"
-    user_id = req_data.get("user_id") or f"usr_{uuid.uuid4().hex[:8]}"
-    username = req_data.get("username") or "anonymous"
-    client_id = req_data.get("client_id") or "web-client"
-    expires_in_minutes = req_data.get("expires_in_minutes", settings.SESSION_TIMEOUT_MINUTES)
-
-    token = create_access_token(
-        user_id=user_id,
-        username=username,
-        session_id=session_id,
-        client_id=client_id,
-        expires_in_minutes=expires_in_minutes,
-    )
-    return {
-        "token": token,
-        "token_type": "Bearer",
-        "session_id": session_id,
-        "expires_in_seconds": expires_in_minutes * 60,
-    }
-
 
 @router.post("/verify")
 async def verify_token_endpoint(payload: Dict[str, Any]):

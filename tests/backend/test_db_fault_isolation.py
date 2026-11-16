@@ -14,11 +14,26 @@ import httpx
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
-from backend.app.core.security import create_access_token
+from backend.app.core.security import create_access_token, hash_password
+from backend.app.core.database import get_db_session
+from backend.app.models.user import User
 from backend.app.services.llm_service import llm_service
 
 
+def _ensure_fault_user() -> None:
+    with get_db_session() as db:
+        if db.query(User).filter(User.id == "usr_fault_test").first() is None:
+            db.add(User(
+                id="usr_fault_test",
+                username="fault_tester",
+                hashed_password=hash_password("test_password_123"),
+                is_active=True,
+            ))
+            db.commit()
+
+
 def test_websocket_delivers_events_when_db_is_down(client, monkeypatch, caplog):
+    _ensure_fault_user()
     token = create_access_token(user_id="usr_fault_test", username="fault_tester")
 
     sse_chunks = [

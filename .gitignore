@@ -67,6 +67,7 @@ ai/models/**/__pycache__/
 *.zip
 data/raw/
 data/datasets/
+wav2vec2_checkpoints/
 
 # Database & Vectors
 database/*.db*
@@ -116,3 +117,6 @@ htmlcov/
 *.sqlite3
 coverage.xml
 tmp/
+
+# English ASR eval: original human recordings must never be committed
+data/english_asr_eval/audio/

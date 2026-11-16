@@ -145,15 +145,17 @@ def test_no_hint_no_lid_routes_to_default():
 
 
 @pytest.mark.asyncio
-async def test_indicconformer_failure_triggers_fallback_to_sensevoice():
+async def test_indicconformer_failure_triggers_fallback_to_sensevoice(monkeypatch):
     """
     Requirement 7: If IndicConformer fails during transcription,
     falls back to the default engine (SenseVoice) and reports the fallback in result.debug.
     """
     from unittest.mock import MagicMock
+    from backend.app.core.config import settings
     from backend.app.services.speech_service import SpeechService
     from ai.inference.types import SpeechResult
 
+    monkeypatch.setattr(settings, "ASR_ENGLISH_ONLY", False)
     service = SpeechService()
     service._sensevoice = MagicMock()
     service._sensevoice.transcribe.return_value = SpeechResult(

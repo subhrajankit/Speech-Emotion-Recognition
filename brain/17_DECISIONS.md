@@ -589,3 +589,31 @@
 
 
 
+
+## ADR 039: Chunk 4A — Manual VoxLingua107 Pipeline, Config-Gated LID, and Off-Loop Routing
+- **Context**:
+  Phase 4 defined a pluggable `LanguageIdentifier` protocol and a 3-tier `LanguageRouter`, but no concrete detector existed and `lid_detector` was never injected, leaving Tier-2 spoken LID dead. Local `models/voxlingua107/` checkpoints were present but unused. The upstream `EncoderClassifier.from_hparams` path is unusable locally because `Pretrainer` resolves `label_encoder.txt` (absent; local file is `label_encoder.ckpt`) and would attempt HF downloads, which are forbidden.
+- **Decision**:
+  1. **Manual forward replication**: `VoxLingua107LanguageIdentifier` (`ai/routing/language_identifier.py`) parses `hyperparams.yaml` via `hyperpyyaml`, loads `embedding_model.ckpt`/`classifier.ckpt` state dicts with `strict=True`, loads `label_encoder.ckpt` via `CategorentalEncoder.load`, and replicates `EncoderClassifier.encode_batch`/`classify_batch` exactly (verified against installed speechbrain 1.1.2 source).
+  2. **Config gating, default off**: `LID_ENABLED=false` and `LID_MODEL_DIR=models/voxlingua107` added; detector injected into `LanguageRouter` only when enabled AND all four artifacts exist. Any init failure warns and falls back to hint/default routing. `LID_CONFIDENCE_THRESHOLD=0.6` unchanged; router policy untouched.
+  3. **Off-loop routing**: `SpeechService.transcribe_array` now awaits `asyncio.to_thread(self.get_engine_for_utterance, ...)` so synchronous LID inference cannot block the event loop; engine lazy-load and inference threading unchanged.
+  4. **Safe degradation contract**: `identify()` returns `("unknown", 0.0)` for empty/silent/non-finite audio, missing artifacts, missing deps, or inference errors; load failures are cached (no per-utterance retry). Confidence is the model's own softmax posterior — never fabricated.
+  5. **Explicit label mapping**: `'xx: Name'` → ISO code via regex + alias table (`iw→he`, `jw→jv` per upstream model card issue #2396); malformed labels → `unknown`.
+- **Consequences**:
+  - Tier-2 LID is implemented but inert by default; enabling is an explicit operator decision requiring `speechbrain` (added to `requirements/ml.txt`).
+  - Unhinted utterances gain real LID routing only when enabled; explicit `language_hint` precedence and all fallback behavior are preserved.
+  - First enabled utterance pays one-time model load inside a worker thread (~15 s observed on CPU); subsequent identify calls ~1 s per utterance.
+
+## ADR 040: Phase D — Dedicated Acoustic Speech Emotion Recognition via emotion2vec_plus_base Behind Feature Flag
+- **Context**:
+  Investigation into the persistent `Unknown (-)` emotion display and real-world Happy/Sad classification bias revealed that SenseVoiceSmall's multi-task embedded emotion tagging suffers from strong semantic/prosodic bias (collapsing anger into `<|SAD|>`, 70.1% Happy / 20.9% Sad / 9.0% Neutral / 0.0% Angry in database history). In actor-independent CREMA-D evaluations (2,758 utterances), `emotion2vec_plus_base` demonstrated 92.2% accuracy and 92.5% UAR with balanced recall across Angry (93.4%), Happy (91.2%), Neutral (98.9%), and Sad (82.5%).
+- **Decision**:
+  1. **Dual-Perception Division of Responsibilities**: SenseVoiceSmall is preserved exclusively for speech-to-text (ASR). A dedicated acoustic engine `Emotion2VecSpeechEngine` (`ai/inference/emotion2vec.py`) handles emotion classification directly from raw waveforms without inspecting transcript text.
+  2. **Config Gating Behind Disabled Feature Flag**: `EMOTION2VEC_ENABLED=false` by default in `backend/app/core/config.py`. When disabled, the existing SenseVoice tagging pipeline runs with zero alteration.
+  3. **Hardware Guardrails on CPU**: `EMOTION2VEC_DEVICE=cpu`, thread allocation clamped to `torch.set_num_threads(2)`, and concurrency strictly bounded to `asyncio.Semaphore(1)` to prevent CPU thread starvation and commit memory exhaustion on Windows.
+  4. **Strict 9-Class to 4-Class Mapping Policy**: Supported classes (`angry`, `happy`, `neutral`, `sad`) are accepted when confidence crosses threshold $\tau = 0.60$. Unsupported classes (`disgusted`, `fearful`, `surprised`, `other`, `<unk>`) and sub-threshold scores are explicitly mapped to `unknown`, which renders `Unknown (-)` in the frontend `EmotionBadge`.
+  5. **Fault-Isolated Execution**: Inference runs off the event loop via `asyncio.to_thread`. If emotion2vec classification fails or encounters an exception, the primary ASR transcript is preserved and error telemetry is logged under `debug["emotion_error"]`.
+- **Consequences**:
+  - Predictable acoustic emotion classification without disrupting real-time ASR streaming.
+  - Invariant compliance: Zero audio persistence, strictly decoupled from LLM, RAG, and TTS.
+  - Safe, instantaneous rollback capability via configuration toggle `EMOTION2VEC_ENABLED=false`.

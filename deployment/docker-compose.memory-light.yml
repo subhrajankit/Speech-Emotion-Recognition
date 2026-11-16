@@ -1,0 +1,22 @@
+# ==============================================================================
+# VoiceSense AI — Memory-Light Single-Engine Lazy Override (~4 GB backend cap)
+# Keeps IndicConformer (~3.75 GB) unloaded on ~8 GB WSL2 / 16 GB RAM hosts as long as
+# clients use Auto/English (do not send language_hint="hi").
+# Note: Hard-disabling IndicConformer or idle-unloading models requires app-code support
+# (reported as out-of-scope gaps in docs/deployment/docker.md).
+# Usage:
+#   docker compose -f docker-compose.yml -f deployment/docker-compose.memory-light.yml up --build
+#   docker compose -f deployment/docker-compose.prod.yml -f deployment/docker-compose.memory-light.yml --env-file .env up -d --build
+# ==============================================================================
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.backend
+    environment:
+      LAZY_LOAD_MODELS: "true"
+      PRELOAD_DEFAULT_ENGINE: "false"
+      SENSEVOICE_THREADS: "2"
+      INFERENCE_CONCURRENCY_LIMIT: "1"
+    mem_limit: ${MEMORY_LIGHT_BACKEND_MEM_LIMIT:-4g}

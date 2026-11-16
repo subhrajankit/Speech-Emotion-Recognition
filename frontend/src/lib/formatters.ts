@@ -34,6 +34,16 @@ export function formatConfidence(confidence: unknown): string {
 }
 
 /**
+ * Format elapsed seconds as m:ss for the recording timer.
+ */
+export function formatElapsedSeconds(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
  * Maps protocol error codes to user-friendly messages.
  * Requirement 4: INFERENCE_ERROR, llm_unavailable, llm_bad_response,
  * tts_unavailable, rate limits, auth errors.
@@ -56,7 +66,7 @@ export function formatErrorMessage(code: string, rawMessage?: string): string {
       return 'Speech rate limit exceeded (maximum 20 utterances per minute). Please wait a moment before speaking.';
 
     case 'AUDIO_DURATION_LIMIT_EXCEEDED':
-      return 'Speech duration limit exceeded (maximum 30 seconds per turn). Please keep utterances concise.';
+      return "This utterance exceeded the server's ~30-second audio limit and was discarded. Recording is still active — keep speaking to start a fresh utterance.";
 
     case 'AUTH_REQUIRED':
       return 'Authentication required. Please sign in or register to enable history persistence.';
@@ -65,7 +75,7 @@ export function formatErrorMessage(code: string, rawMessage?: string): string {
       return 'Authentication failed or token expired. Please sign in again.';
 
     case 'BUFFER_OVERFLOW':
-      return 'Audio transmission buffer limit exceeded. Please restart the audio stream.';
+      return 'The audio buffer limit was exceeded — the current utterance was discarded. Recording is still active — keep speaking to start a fresh utterance.';
 
     case 'UNAUTHORIZED':
     case 'FORBIDDEN':

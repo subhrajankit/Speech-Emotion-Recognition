@@ -1,0 +1,140 @@
+# ==============================================================================
+# VoiceSense AI — Production Docker Compose Stack (CPU Default)
+# Services: frontend (Nginx), backend (FastAPI), postgres (16-alpine), llm (llama.cpp CPU)
+# Fails fast on missing POSTGRES_PASSWORD or JWT_SECRET; DB port is never published.
+# Usage:
+#   docker compose -f deployment/docker-compose.prod.yml --env-file .env up -d --build
+# ==============================================================================
+
+name: voicesense-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-voicesense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env or host environment}
+      POSTGRES_DB: ${POSTGRES_DB:-voicesense}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-voicesense} -d $${POSTGRES_DB:-voicesense}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 512m
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.backend
+      args:
+        USE_CUDA: "false"
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cpu
+    command:
+      - uvicorn
+      - backend.app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --ws-ping-interval
+      - "20"
+      - --ws-ping-timeout
+      - "20"
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      APP_ENV: production
+      ENVIRONMENT: production
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      DEBUG: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1,http://localhost}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-voicesense}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env or host environment}@postgres:5432/${POSTGRES_DB:-voicesense}
+      RUN_MIGRATIONS: "true"
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (>=32 chars) in .env or host environment}
+      SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-60}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://llm:8080}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-qwen3-1.7b}
+      TTS_ENABLED: "false"
+      SILERO_VAD_MODEL_PATH: ${SILERO_VAD_MODEL_PATH:-models/silero_vad.onnx}
+      SENSEVOICE_MODEL_DIR: ${SENSEVOICE_MODEL_DIR:-iic/SenseVoiceSmall}
+      SENSEVOICE_DEVICE: ${SENSEVOICE_DEVICE:-cpu}
+      SENSEVOICE_THREADS: ${SENSEVOICE_THREADS:-4}
+      INDICCONFORMER_MODEL_DIR: ${INDICCONFORMER_MODEL_DIR:-ai4bharat/indic-conformer-600m-multilingual}
+      INDICCONFORMER_REVISION: ${INDICCONFORMER_REVISION:-2a77d305038dfc502fd9464e7d028b90381976cb}
+      INDICCONFORMER_DEVICE: ${INDICCONFORMER_DEVICE:-cpu}
+      INDICCONFORMER_DECODER_TYPE: ${INDICCONFORMER_DECODER_TYPE:-ctc}
+      LAZY_LOAD_MODELS: ${LAZY_LOAD_MODELS:-true}
+      PRELOAD_DEFAULT_ENGINE: ${PRELOAD_DEFAULT_ENGINE:-false}
+      INFERENCE_CONCURRENCY_LIMIT: ${INFERENCE_CONCURRENCY_LIMIT:-2}
+    secrets:
+      - hf_token
+    expose:
+      - "8000"
+    volumes:
+      - ../models:/app/models:ro
+      - ../data:/app/data
+      - hf_cache:/cache/huggingface
+      - modelscope_cache:/cache/modelscope
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No depends_on on llm: backend always starts and serves ASR/emotion even when llm is stopped.
+    mem_limit: ${BACKEND_MEM_LIMIT:-12g}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.frontend
+      args:
+        VITE_API_URL: ${PROD_VITE_API_URL:-http://127.0.0.1}
+        VITE_WS_URL: ${PROD_VITE_WS_URL:-ws://127.0.0.1/ws/speech}
+        VITE_AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+    ports:
+      - "127.0.0.1:80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 256m
+    restart: unless-stopped
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    volumes:
+      - ../models:/models:ro
+    command:
+      - -m
+      - /models/${LLM_MODEL_FILE:-qwen3-1.7b.gguf}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8080"
+      - -c
+      - "${LLM_CTX_SIZE:-4096}"
+      - -ngl
+      - "0"
+    expose:
+      - "8080"
+    mem_limit: ${LLM_MEM_LIMIT:-3g}
+    restart: unless-stopped
+
+secrets:
+  hf_token:
+    environment: HF_TOKEN
+
+volumes:
+  postgres_data:
+    name: voicesense_postgres_data
+  hf_cache:
+    name: voicesense_hf_cache
+  modelscope_cache:
+    name: voicesense_modelscope_cache

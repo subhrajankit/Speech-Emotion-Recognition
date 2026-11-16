@@ -1,11 +1,19 @@
 /**
  * VoiceSense AI — Audio Capture Hook
  * getUserMedia + AudioWorklet downsampling to 16 kHz mono signed 16-bit PCM.
- * Handles permission denied, no device, and mid-stream disconnect.
+ * Handles permission denied, no device, mid-stream disconnect, and
+ * controller-driven cancellation of pending starts.
+ *
+ * The capture pipeline itself lives in lib/capturePipeline.ts (injectable,
+ * unit-testable); this hook owns React state and error surfacing.
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { resampleTo16kPCM16, calculateRMS } from '../lib/audio-utils';
+import {
+  startCapturePipeline,
+  CaptureSession,
+  CaptureStream,
+} from '../lib/capturePipeline';
 
 export type AudioCaptureErrorType =
   | 'permission_denied'
@@ -18,56 +26,55 @@ export interface UseAudioCaptureOptions {
   onError?: (type: AudioCaptureErrorType, message: string) => void;
 }
 
+export interface StartRecordingOptions {
+  /**
+   * Reports whether the recording start was cancelled while pending (e.g. the
+   * recording controller's epoch changed). Checked after the permission
+   * prompt resolves and again before going live: on abort, granted tracks are
+   * released immediately and no AudioContext/worklet/audio is produced.
+   */
+  shouldAbort?: () => boolean;
+}
+
+function classifyCaptureError(err: any): { type: AudioCaptureErrorType; message: string } {
+  if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+    return {
+      type: 'permission_denied',
+      message: 'Microphone permission was denied. Please allow microphone access.',
+    };
+  }
+  if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
+    return {
+      type: 'no_device',
+      message: 'No audio recording device was found on this system.',
+    };
+  }
+  return { type: 'unknown', message: 'Could not access the microphone.' };
+}
+
 export function useAudioCapture(options: UseAudioCaptureOptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<AudioCaptureErrorType | null>(null);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const sessionRef = useRef<CaptureSession | null>(null);
+  // Incremented by every cleanup()/new start: an async pipeline continuation
+  // from an older attempt sees isStale()===true and cannot touch resources
+  // belonging to a newer attempt.
+  const attemptRef = useRef(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   const cleanup = useCallback(() => {
-    if (workletNodeRef.current) {
-      try {
-        workletNodeRef.current.disconnect();
-      } catch (e) {
-        console.debug('[AudioCapture] Disconnect error (ignored):', e);
-      }
-      workletNodeRef.current = null;
-    }
-
-    if (scriptNodeRef.current) {
-      try {
-        scriptNodeRef.current.disconnect();
-      } catch (e) {
-        console.debug('[AudioCapture] Disconnect error (ignored):', e);
-      }
-      scriptNodeRef.current = null;
-    }
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => {
-        track.onended = null;
-        track.stop();
-      });
-      mediaStreamRef.current = null;
-    }
-
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-
+    attemptRef.current += 1;
+    sessionRef.current?.cleanup();
+    sessionRef.current = null;
     setIsRecording(false);
     setAudioLevel(0);
   }, []);
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (startOptions?: StartRecordingOptions) => {
     cleanup();
     setErrorMessage(null);
     setErrorType(null);
@@ -80,105 +87,77 @@ export function useAudioCapture(options: UseAudioCaptureOptions = {}) {
       return false;
     }
 
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      mediaStreamRef.current = stream;
-    } catch (err: any) {
-      let type: AudioCaptureErrorType = 'unknown';
-      let msg = 'Could not access the microphone.';
+    // cleanup() just bumped the attempt counter; this is the live generation.
+    const myAttempt = attemptRef.current;
 
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        type = 'permission_denied';
-        msg = 'Microphone permission was denied. Please allow microphone access.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        type = 'no_device';
-        msg = 'No audio recording device was found on this system.';
-      }
-
-      setErrorType(type);
-      setErrorMessage(msg);
-      optionsRef.current.onError?.(type, msg);
-      return false;
-    }
-
-    // Monitor for mid-stream hardware or permission disconnection
-    const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack) {
-      audioTrack.onended = () => {
+    const result = await startCapturePipeline({
+      getUserMedia: () =>
+        navigator.mediaDevices!.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        }) as Promise<CaptureStream>,
+      createAudioContext: () => {
+        const AudioCtx =
+          window.AudioContext || (window as any).webkitAudioContext;
+        return new AudioCtx();
+      },
+      createWorkletNode: (ctx) =>
+        new AudioWorkletNode(
+          ctx as unknown as AudioContext,
+          'pcm16-worklet-processor'
+        ) as any,
+      onAudioChunk: (chunk) => optionsRef.current.onAudioChunk?.(chunk),
+      onAudioLevel: setAudioLevel,
+      onTrackEnded: () => {
+        // Unexpected mid-recording termination (hardware/permission loss).
         cleanup();
         const type: AudioCaptureErrorType = 'disconnected';
         const msg = 'Microphone was disconnected during active recording.';
         setErrorType(type);
         setErrorMessage(msg);
         optionsRef.current.onError?.(type, msg);
-      };
-    }
+      },
+      shouldAbort: startOptions?.shouldAbort,
+      isStale: () => myAttempt !== attemptRef.current,
+    });
 
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      audioContextRef.current = audioCtx;
-
-      const source = audioCtx.createMediaStreamSource(stream);
-
-      // Try AudioWorklet first
-      let workletSupported = false;
-      if (audioCtx.audioWorklet) {
-        try {
-          await audioCtx.audioWorklet.addModule('/audio-processor.js');
-          const workletNode = new AudioWorkletNode(audioCtx, 'pcm16-worklet-processor');
-          workletNode.port.onmessage = (e) => {
-            const buffer: ArrayBuffer = e.data;
-            if (buffer && buffer.byteLength > 0) {
-              const pcmView = new Int16Array(buffer);
-              setAudioLevel(calculateRMS(pcmView));
-              optionsRef.current.onAudioChunk?.(buffer);
-            }
-          };
-          source.connect(workletNode);
-          workletNode.connect(audioCtx.destination);
-          workletNodeRef.current = workletNode;
-          workletSupported = true;
-        } catch (workletErr) {
-          console.warn('[AudioCapture] AudioWorklet setup failed, falling back to ScriptProcessor:', workletErr);
-        }
+    if (result.ok) {
+      if (myAttempt !== attemptRef.current) {
+        // Superseded by a newer attempt after the pipeline's last checkpoint:
+        // release THIS session immediately and touch nothing shared, so an
+        // old capture can never hold or clobber the newer attempt's resources.
+        result.session.cleanup();
+        return false;
       }
-
-      // Fallback: ScriptProcessorNode
-      if (!workletSupported) {
-        const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
-        scriptNode.onaudioprocess = (audioProcessingEvent) => {
-          const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-          setAudioLevel(calculateRMS(inputData));
-
-          const pcm16 = resampleTo16kPCM16(inputData, audioCtx.sampleRate);
-          if (pcm16.length > 0) {
-            optionsRef.current.onAudioChunk?.(pcm16.buffer as ArrayBuffer);
-          }
-        };
-        source.connect(scriptNode);
-        scriptNode.connect(audioCtx.destination);
-        scriptNodeRef.current = scriptNode;
-      }
-
+      // The pipeline's final checkpoint guarantees no abort/stale raced past
+      // the last await, so storing the session here is safe.
+      sessionRef.current = result.session;
       setIsRecording(true);
       return true;
-    } catch (err: any) {
-      cleanup();
-      const msg = `Failed to initialize audio processing pipeline: ${err?.message || err}`;
-      setErrorType('unknown');
-      setErrorMessage(msg);
-      optionsRef.current.onError?.('unknown', msg);
+    }
+
+    if (result.reason === 'failed') {
+      if (result.stage === 'pipeline') {
+        const err = result.error as any;
+        const msg = `Failed to initialize audio processing pipeline: ${err?.message || err}`;
+        setErrorType('unknown');
+        setErrorMessage(msg);
+        optionsRef.current.onError?.('unknown', msg);
+        return false;
+      }
+      const { type, message } = classifyCaptureError(result.error);
+      setErrorType(type);
+      setErrorMessage(message);
+      optionsRef.current.onError?.(type, message);
       return false;
     }
+
+    // 'aborted' | 'stale': expected cancellation — silent, no error alert.
+    return false;
   }, [cleanup]);
 
   const stopRecording = useCallback(() => {

@@ -111,3 +111,75 @@ def test_vad_speech_segmenter_stream():
     assert emitted is not None
     assert len(emitted) > 0
     assert segmenter.in_speech is False
+
+
+class _ScriptedStreamingVAD:
+    """Deterministic per-frame VAD double for VADSpeechSegmenter tests."""
+    def __init__(self, probs):
+        self._probs = list(probs)
+
+    def process_frame(self, frame_samples):
+        return self._probs.pop(0) if self._probs else 0.0
+
+    def reset(self):
+        pass
+
+
+def _frame_bytes() -> bytes:
+    return b"\x01\x00" * 512  # 1024 bytes = one 32ms PCM16 frame
+
+
+def test_segmenter_flush_while_idle_returns_none():
+    """Stop while idle: the non-speech pre-buffer must NOT be returned for ASR."""
+    segmenter = VADSpeechSegmenter(
+        vad=_ScriptedStreamingVAD([0.0] * 40),
+        silence_timeout_ms=500,
+        speech_threshold=0.5,
+    )
+    for _ in range(20):
+        assert segmenter.process_chunk(_frame_bytes()) is None
+    assert segmenter.in_speech is False
+    assert segmenter.flush() is None
+
+
+def test_segmenter_flush_during_speech_returns_audio():
+    """Stop mid-utterance: genuine in-progress speech is still flushed."""
+    segmenter = VADSpeechSegmenter(
+        vad=_ScriptedStreamingVAD([0.9] * 20),
+        silence_timeout_ms=500,
+        speech_threshold=0.5,
+    )
+    for _ in range(10):
+        segmenter.process_chunk(_frame_bytes())
+    assert segmenter.in_speech is True
+
+    flushed = segmenter.flush()
+    assert flushed is not None
+    assert len(flushed) > 0
+    assert segmenter.in_speech is False
+    # Repeated flush after reset is a no-op.
+    assert segmenter.flush() is None
+
+
+def test_segmenter_flush_after_completed_segment_returns_none():
+    """Regression: after a VAD-completed utterance plus trailing silence,
+    stop-flush must not resubmit the idle pre-buffer as a phantom segment."""
+    # 10 speech frames, then enough silence (>500ms = 16 frames) to complete.
+    segmenter = VADSpeechSegmenter(
+        vad=_ScriptedStreamingVAD([0.9] * 10 + [0.0] * 40),
+        silence_timeout_ms=500,
+        speech_threshold=0.5,
+    )
+    completed = None
+    for _ in range(26):
+        res = segmenter.process_chunk(_frame_bytes())
+        if res is not None:
+            completed = res
+            break
+    assert completed is not None
+    assert segmenter.in_speech is False
+
+    # Trailing idle frames accumulate only in the pre-buffer.
+    for _ in range(10):
+        assert segmenter.process_chunk(_frame_bytes()) is None
+    assert segmenter.flush() is None

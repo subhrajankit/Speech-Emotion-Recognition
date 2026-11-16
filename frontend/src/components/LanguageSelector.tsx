@@ -7,153 +7,81 @@ export interface LanguageSelectorProps {
   selectedLanguage: LanguageOption;
   onChange: (language: LanguageOption, hint: string | null) => void;
   disabled?: boolean;
+  englishOnly?: boolean;
+}
+
+interface LangOptionDef {
+  value: LanguageOption;
+  label: string;
 }
 
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   selectedLanguage,
   onChange,
   disabled = false,
+  englishOnly = false,
 }) => {
   const handleSelect = (lang: LanguageOption) => {
-    if (disabled) return;
+    if (disabled || (englishOnly && lang === 'hi')) return;
     const hint = lang === 'auto' ? null : lang;
     onChange(lang, hint);
   };
+
+  const options: LangOptionDef[] = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'en', label: 'English' },
+    ...(!englishOnly ? [{ value: 'hi' as LanguageOption, label: 'Hindi (हिन्दी)' }] : []),
+  ];
 
   return (
     <div
       role="region"
       aria-label="Language selection"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.4rem',
-      }}
+      className="lang-selector"
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+      <div className="lang-row">
         <span
           id="language-selector-label"
-          style={{
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            color: 'var(--text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
+          className="lang-label"
         >
-          <Globe size={14} />
+          <Globe size={14} aria-hidden="true" />
           Language:
         </span>
 
         <div
-          role="radiogroup"
+          role="group"
           aria-labelledby="language-selector-label"
-          style={{
-            display: 'inline-flex',
-            backgroundColor: 'var(--bg-base)',
-            padding: '2px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)',
-          }}
+          className="seg-control"
         >
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selectedLanguage === 'auto'}
-            disabled={disabled}
-            onClick={() => handleSelect('auto')}
-            style={{
-              padding: '0.3rem 0.75rem',
-              fontSize: '0.8rem',
-              fontWeight: selectedLanguage === 'auto' ? 600 : 400,
-              border: 'none',
-              borderRadius: 'var(--radius-sm)',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              backgroundColor:
-                selectedLanguage === 'auto' ? 'var(--color-voice)' : 'transparent',
-              color: selectedLanguage === 'auto' ? '#FFFFFF' : 'var(--text-secondary)',
-              transition: 'background-color 0.15s ease',
-            }}
-          >
-            Auto
-          </button>
-
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selectedLanguage === 'en'}
-            disabled={disabled}
-            onClick={() => handleSelect('en')}
-            style={{
-              padding: '0.3rem 0.75rem',
-              fontSize: '0.8rem',
-              fontWeight: selectedLanguage === 'en' ? 600 : 400,
-              border: 'none',
-              borderRadius: 'var(--radius-sm)',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              backgroundColor:
-                selectedLanguage === 'en' ? 'var(--color-voice)' : 'transparent',
-              color: selectedLanguage === 'en' ? '#FFFFFF' : 'var(--text-secondary)',
-              transition: 'background-color 0.15s ease',
-            }}
-          >
-            English
-          </button>
-
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selectedLanguage === 'hi'}
-            disabled={disabled}
-            onClick={() => handleSelect('hi')}
-            style={{
-              padding: '0.3rem 0.75rem',
-              fontSize: '0.8rem',
-              fontWeight: selectedLanguage === 'hi' ? 600 : 400,
-              border: 'none',
-              borderRadius: 'var(--radius-sm)',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              backgroundColor:
-                selectedLanguage === 'hi' ? 'var(--color-voice)' : 'transparent',
-              color: selectedLanguage === 'hi' ? '#FFFFFF' : 'var(--text-secondary)',
-              transition: 'background-color 0.15s ease',
-            }}
-          >
-            Hindi (हिन्दी)
-          </button>
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              aria-pressed={selectedLanguage === opt.value}
+              disabled={disabled}
+              onClick={() => handleSelect(opt.value)}
+              className={`seg-btn ${selectedLanguage === opt.value ? 'active' : ''}`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Auto Explanation note per Requirement 1 */}
       {selectedLanguage === 'auto' && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            fontSize: '0.72rem',
-            color: 'var(--text-muted)',
-            fontStyle: 'normal',
-          }}
-        >
-          <Info size={12} style={{ flexShrink: 0 }} />
+        <div className="lang-note">
+          <Info size={12} style={{ flexShrink: 0 }} aria-hidden="true" />
           <span>
-            <strong>Auto:</strong> Uses default engine (SenseVoice); no automatic language detection yet. For Hindi, select Hindi explicitly.
+            <strong>Auto:</strong> {englishOnly
+              ? 'Uses SenseVoice English ASR; automatic language detection is disabled.'
+              : 'Uses default engine (SenseVoice); no automatic language detection yet. For Hindi, select Hindi explicitly.'}
           </span>
         </div>
       )}
-      {selectedLanguage === 'hi' && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            fontSize: '0.72rem',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <Info size={12} style={{ flexShrink: 0 }} />
+      {!englishOnly && selectedLanguage === 'hi' && (
+        <div className="lang-note">
+          <Info size={12} style={{ flexShrink: 0 }} aria-hidden="true" />
           <span>
             <strong>Hindi:</strong> Routes directly to IndicConformer-600m acoustic model (`language_hint: &quot;hi&quot;`).
           </span>
@@ -162,4 +90,3 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
     </div>
   );
 };
-

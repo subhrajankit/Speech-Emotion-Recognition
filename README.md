@@ -1,6 +1,9 @@
 # VoiceSense AI
 
-VoiceSense AI is a modular, local-first, multilingual, emotion-aware voice assistant built with FastAPI, React/TypeScript, Silero VAD, SenseVoiceSmall, AI4Bharat IndicConformer-600m, intent-gated `multilingual-e5-small` RAG, and local `Qwen3-1.7B` GGUF inference via `llama.cpp`.
+VoiceSense AI is a modular, local-first, emotion-aware voice assistant built with FastAPI, React/TypeScript, Silero VAD, SenseVoiceSmall, intent-gated `multilingual-e5-small` RAG, and local `Qwen3-1.7B` GGUF inference via `llama.cpp`.
+
+> [!IMPORTANT]
+> **English-only MVP:** `ASR_ENGLISH_ONLY=true` by default. Only `language_hint` values `en`, `auto`, empty, or `null` are accepted; other hints are rejected with `INVALID_LANGUAGE_HINT`. Multilingual routing code (IndicConformer-600m, Hindi/Indic ASR) is preserved but disabled unless `ASR_ENGLISH_ONLY=false`.
 
 > [!NOTE]
 > All documentation in this repository distinguishes between **`real-verified`** capabilities measured against actual models/weights, automated CI-lite test coverage, and **`unverified` / `NOT YET MEASURED`** components. See [`docs/architecture/status.md`](docs/architecture/status.md) for the live verification ledger.
@@ -11,7 +14,7 @@ VoiceSense AI is a modular, local-first, multilingual, emotion-aware voice assis
 
 VoiceSense AI processes live microphone PCM16 audio over WebSocket (`/ws/speech`) without persisting raw audio to disk:
 - **Perception First:** Speech-to-Text (ASR), discrete emotion tags, and audio events (`speech_result`) are emitted before any LLM generation, RAG retrieval, or database write begins. If downstream services fail, speech perception continues working.
-- **Explicit Language Routing:** Global speech (`en`, `zh`, `yue`, `ja`, `ko`, or `null` Auto) routes to `SenseVoiceSmall`; Hindi (`language_hint="hi"`) routes explicitly to `IndicConformer-600m` (`emotion: null`).
+- **Explicit Language Routing:** Global speech (`en`, `zh`, `yue`, `ja`, `ko`, `auto`, or `null`) routes to `SenseVoiceSmall`. Hindi (`language_hint="hi"`) routes explicitly to `IndicConformer-600m` (`emotion: null`) **only in multilingual mode** (`ASR_ENGLISH_ONLY=false`); the default English-only MVP rejects non-English hints.
 - **Hard-Gated RAG:** Knowledge retrieval runs only when semantic intent similarity (`intfloat/multilingual-e5-small`) crosses threshold (`0.70` default); plain conversation bypasses RAG.
 - **Local-First Privacy:** Local services bind to `127.0.0.1`, transcripts only persist when `STORE_TRANSCRIPTS=true` on authenticated sessions, and `DELETE /api/history` purges user history.
 
@@ -26,7 +29,7 @@ flowchart LR
     VAD["Silero VAD Segmenter<br/>700ms silence split"]
     Router{"Language Router<br/>(language_hint)"}
     SV["SenseVoiceSmall<br/>Global ASR + Emotion + AED"]
-    IC["IndicConformer-600m<br/>Hindi ASR (CTC CPU, emotion=null)"]
+    IC["IndicConformer-600m<br/>Hindi ASR — multilingual mode only (ASR_ENGLISH_ONLY=false)"]
     Out["Emit speech_result<br/>(Isolated from LLM/RAG/TTS/DB)"]
     Gate{"Semantic Intent Gate<br/>multilingual-e5-small >= 0.70"}
     RAG["FAISS / NumpyVectorIndex<br/>Top-K Retrieval -> rag_sources"]
@@ -59,13 +62,13 @@ Full module boundaries, failure-isolation guarantees, lazy loading, and memory n
 ### Verified Against Real Models (`real-verified`)
 - **Non-Blocking WebSocket Voice Streaming & Cold-Load Keepalive:** Silero VAD 512-sample segmentation (`700 ms` silence split), multi-segment `speech_result` dispatch (`debug.segment_index`), lazy model loading (`loading_model` / `model_ready` status banners), and `_message_pump` ping handling (`225.9 ms` max event-loop stall over a `49 s` cold load; `docs/deployment/runs/run_phase10_e2e_real.txt`).
 - **Global ASR + Discrete Emotion/Event Tags (`SenseVoiceSmall`):** Tested on synthetic English speech (`english_speech_16k.wav`), emitting clean text, language `en`, normalized emotion (`neutral`), `confidence: null`, and acoustic events.
-- **Hindi ASR Routing (`IndicConformer-600m`, Pinned Revision):** Explicit `language_hint="hi"` routes to CPU CTC inference (`"आज मौसम बहुत अच्छा है"` on real `5.28 s` Hindi clip, median `1,198.1 ms`, RTF `0.23`), emitting `emotion: null, confidence: null`.
+- **Hindi ASR Routing (`IndicConformer-600m`, Pinned Revision — multilingual mode only):** With `ASR_ENGLISH_ONLY=false`, explicit `language_hint="hi"` routes to CPU CTC inference (`"आज मौसम बहुत अच्छा है"` on real `5.28 s` Hindi clip, median `1,198.1 ms`, RTF `0.23`), emitting `emotion: null, confidence: null`. Disabled by default in the English-only MVP.
 - **Intent-Gated RAG:** `intfloat/multilingual-e5-small` (`384`-dim embeddings) + FAISS `IndexFlatIP` (with automatic `NumpyVectorIndex` fallback when `faiss` is blocked on Windows SAC), reaching `47/50` (`94.0%`) on the agent-authored hard gate eval (`docs/deployment/runs/hard_gate_eval_8i.txt`).
 - **Local LLM Streaming & Circuit Breaker (`Qwen3-1.7B` Q4_K_M):** `127.0.0.1:8080` OpenAI-compatible SSE client with `<think>` filtering, repetition safeguards (`repeat_penalty=1.1`, `frequency_penalty=0.2`, `max_tokens=120`), and failure isolation (`speech_result` arrives even when LLM is down).
 
 ### Implemented & Automated / Partial / Unverified
 - **Authentication & History (`integration` / `live turn` verified):** `hashlib.scrypt` password hashing, HS256 JWT tokens, per-IP/per-session rate limits, user-isolated SQLite sessions, and `DELETE /api/history` purge. PostgreSQL runtime execution is **`unverified`**.
-- **React Dashboard UI (`automated unit/build` & Phase 9b Playwright verified):** Language selector (`Auto`, `English`, `Hindi`), status banner, multi-segment utterance list, RAG source badges, voice-replies-disabled notice, in-memory token auth modal (no `localStorage`), and history panel. Note: backend `/api/health` does not emit `auth_required`; the frontend reads build-time `VITE_AUTH_REQUIRED`.
+- **React Dashboard UI (`automated unit/build` & Phase 9b Playwright verified):** Language selector (`Auto`, `English`; `Hindi` shown only when `VITE_ASR_ENGLISH_ONLY=false`), status banner, multi-segment utterance list, RAG source badges, voice-replies-disabled notice, in-memory token auth modal (no `localStorage`), and history panel. Note: backend `/api/health` does not emit `auth_required`; the frontend reads build-time `VITE_AUTH_REQUIRED`.
 - **Expressive TTS (`Indic Parler-TTS` — Disabled by Default):** `TTS_ENABLED=false` by default; RTX 2050 benchmarking showed RTF `2.65–13.15` (slower than real time) and Windows virtual commit exhaustion (`docs/deployment/tts-benchmark-rtx2050.md`).
 - **Docker Compose Stacks (`config -q` syntax verified; runtime `unverified`):** Container builds and multi-service Compose runs were not executed (Docker daemon stopped).
 
@@ -174,7 +177,7 @@ Model weights are **never committed to Git** and **never baked into Docker image
 |---|---|---|---|---|
 | **Silero VAD** | 32 ms speech boundary detection | `snakers4/silero-vad` | Default bundled / `SILERO_VAD_MODEL_PATH` (`models/silero_vad.onnx`) | No |
 | **SenseVoiceSmall** | Default ASR (`zh/yue/en/ja/ko`) + emotion + AED | `iic/SenseVoiceSmall` (ModelScope / HF cache) | `SENSEVOICE_MODEL_DIR` -> `MODELSCOPE_CACHE` / `HF_HOME` | No |
-| **IndicConformer-600m** | Hindi ASR (`language_hint="hi"`, CTC CPU default) | `ai4bharat/indic-conformer-600m-multilingual` | Pinned `INDICCONFORMER_REVISION`: **`2a77d305038dfc502fd9464e7d028b90381976cb`** | **Yes (`HF_TOKEN`)** |
+| **IndicConformer-600m** | Hindi ASR — preserved, disabled in English-only MVP (`language_hint="hi"` requires `ASR_ENGLISH_ONLY=false`) | `ai4bharat/indic-conformer-600m-multilingual` | Pinned `INDICCONFORMER_REVISION`: **`2a77d305038dfc502fd9464e7d028b90381976cb`** | **Yes (`HF_TOKEN`)** |
 | **Qwen3-1.7B GGUF** | Local conversational LLM | `unsloth/Qwen3-1.7B-GGUF` (`Q4_K_M`) | Local GGUF loaded by `llama-server` on `127.0.0.1:8080` | No |
 | **multilingual-e5-small** | Intent router + RAG chunk embeddings (`384`-dim) | `intfloat/multilingual-e5-small` | Cached under `HF_HOME` | No |
 | **Indic Parler-TTS** | Emotion-styled TTS (disabled by default) | `ai4bharat/indic-parler-tts` | `TTS_ENABLED=false` (`.venv-tts` isolated worker) | Requires HF access |
@@ -214,7 +217,7 @@ Defaults verified directly against `backend.app.core.config.Settings` and `.env.
 | `INFERENCE_CONCURRENCY_LIMIT` | `2` | Asyncio semaphore bounding worker-thread ASR inference |
 | `VAD_THRESHOLD` / `SILERO_VAD_MODEL_PATH` | `0.5` / `models/silero_vad.onnx` | `SILERO_VAD_MODEL_PATH` & `SILERO_VAD_THRESHOLD` read via `os.getenv` in `ai/preprocessing/vad.py` |
 | `SENSEVOICE_MODEL_DIR` / `SENSEVOICE_DEVICE` / `SENSEVOICE_THREADS` | `iic/SenseVoiceSmall` / `cpu` / `4` | Primary English/CJK ASR + emotion engine |
-| `INDICCONFORMER_MODEL_DIR` / `INDICCONFORMER_REVISION` | `ai4bharat/indic-conformer-600m-multilingual` / `2a77d305...` | Pinned Hindi ASR model (`device=cpu`, `decoder_type=ctc`) |
+| `INDICCONFORMER_MODEL_DIR` / `INDICCONFORMER_REVISION` | `ai4bharat/indic-conformer-600m-multilingual` / `2a77d305...` | Pinned Hindi ASR model, used only in multilingual mode (`ASR_ENGLISH_ONLY=false`) |
 | `LAZY_LOAD_MODELS` / `PRELOAD_DEFAULT_ENGINE` | `True` / `False` | Defer heavy weights until first request (`loading_model` UI status) |
 | `LLM_BASE_URL` / `LLM_MODEL_NAME` | `http://127.0.0.1:8080` / `qwen3-1.7b` | Local `llama.cpp` server endpoint & model tag |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_TOKENS` / `LLM_TEMPERATURE` | `30.0` / `120` / `0.7` | Generation timeout, token budget, sampling |
@@ -365,7 +368,7 @@ Only numbers backed by saved artifact files are treated as measurements below:
 
 ## 16. Honest Limitations & Known Gaps
 
-1. **Hindi Routing Requires Explicit `language_hint="hi"`:** Selecting `Auto` (`language_hint: null`) always uses `SenseVoiceSmall`. Automatic spoken LID (`Phase 4b`) was intentionally deferred after candidate LID models misclassified real Hindi speech and added `~379–426 MB` working-set RAM.
+1. **English-Only ASR MVP:** `ASR_ENGLISH_ONLY=true` by default; only `en`/`auto`/empty/`null` hints are accepted and other hints return `INVALID_LANGUAGE_HINT`. Hindi/Indic routing requires `ASR_ENGLISH_ONLY=false`; even then, selecting `Auto` (`language_hint: null`) always uses `SenseVoiceSmall` (automatic spoken LID was intentionally deferred after candidate LID models misclassified real Hindi speech and added `~379–426 MB` working-set RAM).
 2. **No Hindi Emotion Recognition:** `IndicConformer-600m` handles Hindi ASR only and outputs `emotion: null, confidence: null`.
 3. **Code-Mixed Speech Untested:** Hinglish or bilingual code-switched utterances have not been evaluated or benchmarked.
 4. **SenseVoiceSmall Language Scope:** Official [`FunAudioLLM/SenseVoice`](https://github.com/FunAudioLLM/SenseVoice) documentation supports 5 languages (`zh`, `yue`, `en`, `ja`, `ko`); it does not support Hindi.

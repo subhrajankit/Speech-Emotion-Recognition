@@ -14,7 +14,7 @@ class TranscriptSchema(BaseModel):
     text: str
     language: str
     script: Optional[str] = None
-    mixed_language: bool
+    mixed_language: Optional[bool] = None
     audio_events: Optional[List[str]] = None
     created_at: datetime
 
@@ -24,9 +24,9 @@ class EmotionSchema(BaseModel):
 
     id: str
     primary_emotion: str
-    confidence: float
-    valence: float
-    arousal: float
+    confidence: Optional[float] = None
+    valence: Optional[float] = None
+    arousal: Optional[float] = None
     raw_tags: Optional[List[str]] = None
     created_at: datetime
 

@@ -17,10 +17,24 @@ from fastapi.testclient import TestClient
 
 from backend.app.core.config import settings
 from backend.app.core.database import Base, get_db_session
-from backend.app.core.security import create_access_token
+from backend.app.core.security import create_access_token, hash_password
 from backend.app.services.llm_service import llm_service
 from backend.app.models.transcript import Transcript
 from backend.app.models.message import Message
+from backend.app.models.user import User
+
+
+def _ensure_test_user(user_id: str, username: str) -> None:
+    """Creates the user row backing a test JWT so FK enforcement accepts sessions."""
+    with get_db_session() as db:
+        if db.query(User).filter(User.id == user_id).first() is None:
+            db.add(User(
+                id=user_id,
+                username=username,
+                hashed_password=hash_password("test_password_123"),
+                is_active=True,
+            ))
+            db.commit()
 
 
 def test_no_raw_audio_columns_in_database_schema():
@@ -50,6 +64,7 @@ def test_no_audio_files_persisted_to_temp_or_disk(client: TestClient, monkeypatc
     before_wavs = set(glob.glob(os.path.join(temp_dir, "*.wav")))
     before_pcms = set(glob.glob(os.path.join(temp_dir, "*.pcm")))
 
+    _ensure_test_user("usr_privacy_test", "privacy_tester")
     token = create_access_token(user_id="usr_privacy_test", username="privacy_tester")
 
     sse_chunks = [
@@ -110,6 +125,7 @@ def test_store_transcripts_policy(client: TestClient, monkeypatch):
     orig_policy = settings.STORE_TRANSCRIPTS
     try:
         settings.STORE_TRANSCRIPTS = False
+        _ensure_test_user("usr_redaction_test", "redaction_tester")
         token = create_access_token(user_id="usr_redaction_test", username="redaction_tester")
 
         sse_chunks = [

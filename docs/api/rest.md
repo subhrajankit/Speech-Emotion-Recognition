@@ -40,7 +40,7 @@ Returns live readiness for `asr`, `emotion`, `llm`, `rag`, `tts`, and `db`. Retu
 - **Content-Type:** `multipart/form-data`
 - **Fields:**
   - `file` *(required)*: Binary audio file (`MAX_UPLOAD_SIZE_BYTES=10485760` / 10 MB default).
-  - `language_hint` *(optional `string | null`)*: `"en"`, `"hi"`, or `null`.
+  - `language_hint` *(optional `string | null`)*: `"en"`, `"auto"`, empty, or `null`. The default deployment runs with `ASR_ENGLISH_ONLY=true`; any other hint (e.g. `"hi"`) is rejected with `INVALID_LANGUAGE_HINT`. Multilingual routing (`"hi"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`) requires `ASR_ENGLISH_ONLY=false`.
 - **Supported Formats:** OpenAPI description mentions `(WAV, MP3, FLAC, OGG)`; runtime `Settings.ALLOWED_AUDIO_MIME_TYPES` accepts `audio/wav`, `audio/x-wav`, `audio/wave`, `audio/mpeg`, `audio/mp3`, `audio/ogg`, `audio/flac`, `audio/webm`, `application/octet-stream`, and the upload handler also accepts `.m4a` filenames.
 - **Privacy Guarantee:** Audio bytes are decoded strictly in memory and discarded at the end of the request.
 
@@ -50,8 +50,8 @@ Returns live readiness for `asr`, `emotion`, `llm`, `rag`, `tts`, and `db`. Retu
 - **Doc/Code Mismatch:** Passing `include_assistant=true` still returns the Phase 2 stub (`{"status": "not_configured", "message": "Assistant LLM reasoning is not configured in Phase 2."}`) because live streaming Qwen3 + RAG turns run over the `/ws/speech` WebSocket protocol rather than REST.
 
 ### `SpeechResult` Confidence & Null Semantics
-- **SenseVoiceSmall (`language_hint=null` / `"en"` / `"zh"` / `"ja"` / `"ko"` / `"yue"`):** Emits greedy discrete tokens with `emotion` normalized when detected (or `null`) and `confidence: null` (never fabricated).
-- **IndicConformer-600m (`language_hint="hi"`):** Performs Hindi ASR only; emits `emotion: null` and `confidence: null` because Hindi emotion recognition is separate and unimplemented at runtime.
+- **SenseVoiceSmall (`language_hint=null` / `"en"` / `"zh"` / `"ja"` / `"ko"` / `"yue"`):** Emits greedy discrete tokens. `emotion` is a normalized discrete SenseVoice tag (`happy`, `sad`, `angry`, `neutral`, `fearful`, `disgusted`, `surprised`) or `null` when the model emits `EMO_UNKNOWN`/`UNK` — it is NOT a calibrated probability. `confidence` is always `null`; there are no `valence`/`arousal`/`emotion_scores` fields in `SpeechResult`.
+- **IndicConformer-600m (`language_hint="hi"`, multilingual mode only):** Preserved for future use but **disabled in the default English-only MVP** (`ASR_ENGLISH_ONLY=true` rejects `"hi"` before routing). When enabled (`ASR_ENGLISH_ONLY=false`), it performs Hindi ASR only and emits `emotion: null` and `confidence: null` because Hindi emotion recognition is separate and unimplemented at runtime.
 
 ---
 
@@ -75,5 +75,5 @@ Auth routes enforce per-IP rate limiting via `IPRateLimiter` (`RATE_LIMIT_AUTH_P
 All `/api/history*` routes extract the authenticated user from the `OAuth2PasswordBearer` header (`Authorization: Bearer <token>`):
 
 - **Strict Tenant Isolation:** Queries filter by `user_id`; requesting another user's `session_id` returns `404` rather than leaking existence.
-- **Known Persistence Fallback:** When storing historical `emotion_results` for a turn whose live prediction had `emotion=null` (such as Hindi turns), `HistoryService` persists `primary_emotion="neutral"` and `confidence=0.8` in SQL storage rather than nullable values (`backend/app/services/history_service.py`). Live WebSocket and REST perception responses remain unaffected and continue returning `null`.
+- **Emotion Persistence Semantics:** `HistoryService` creates an `emotion_results` row only when the turn's `emotion` label is present. Turns with `emotion=null` (e.g. Hindi/IndicConformer turns or `EMO_UNKNOWN` tags) persist **no** emotion row. When a row is created, `primary_emotion` holds the discrete SenseVoice tag while `confidence`, `valence`, and `arousal` are always `null` — no calibrated scores exist yet. (`backend/app/services/history_service.py`)
 - **Permanent Purge:** `DELETE /api/history` deletes all sessions, predictions, transcripts, emotion records, and assistant messages for the caller in one transaction and returns `DeleteHistoryResponse`.

@@ -1,0 +1,759 @@
+{
+  "benchmark": "sensevoice_asr",
+  "dataset_type": "synthetic_diagnostic",
+  "status": "complete",
+  "completed_stages": [
+    "model_load",
+    "warm_inference",
+    "decode_preprocessing",
+    "service_path",
+    "sequential_service",
+    "concurrent_service"
+  ],
+  "interruption": {
+    "pid": 20976,
+    "current_stage": null,
+    "last_update": "2026-11-14T10:30:38.384320+00:00",
+    "current_clip": null,
+    "run_index": null,
+    "concurrency_level": null,
+    "round_index": null
+  },
+  "generated_at": "2026-11-14T10:27:40.935735+00:00",
+  "disclaimer": "Synthetic TTS diagnostic clips only. These metrics characterize pipeline mechanics, NOT human-speech accuracy or production latency guarantees.",
+  "metric_definitions": {
+    "init_seconds": "engine construction through load completion",
+    "first_transcribe_seconds": "first generate() call incl. warmup",
+    "wall_ms": "caller-observed wall time around transcribe()",
+    "engine_processing_time_ms": "engine-internal timer (VAD gate + generate)",
+    "rtf": "engine_processing_time_ms / 1000 / audio_duration_s",
+    "decode_ms": "load_and_preprocess_audio only",
+    "service_wall_ms": "SpeechService.transcribe_array incl. routing/semaphore"
+  },
+  "limitations": [
+    "synthetic TTS audio; not representative of human speech",
+    "single machine, CPU inference; no GPU measurements",
+    "semaphore queue wait not instrumented separately",
+    "memory = RSS snapshots only if psutil available; no peak claim",
+    "no network/WebSocket overhead measured"
+  ],
+  "environment": {
+    "python": "3.13.14",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "logical_cpus": 16,
+    "sensevoice_device": "cpu",
+    "sensevoice_threads": 4,
+    "clips": {
+      "en_5_words_gpu_fp16": {
+        "path": "tests/samples/en_5_words_gpu_fp16.wav",
+        "duration_s": 13.526,
+        "sample_rate": 44100,
+        "channels": 1
+      },
+      "en_14_words_gpu_fp16": {
+        "path": "tests/samples/en_14_words_gpu_fp16.wav",
+        "duration_s": 23.905,
+        "sample_rate": 44100,
+        "channels": 1
+      }
+    },
+    "cpu_model": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "funasr_version": "1.4.16",
+    "torch_version": "2.14.1+cu126"
+  },
+  "memory": {
+    "before": {
+      "skipped": true,
+      "reason": "psutil not installed; no dependency added"
+    },
+    "after_model_load": {
+      "skipped": true,
+      "reason": "psutil not installed; no dependency added"
+    },
+    "after_benchmark": {
+      "skipped": true,
+      "reason": "psutil not installed; no dependency added"
+    }
+  },
+  "warm_inference": {
+    "en_5_words_gpu_fp16": {
+      "audio_duration_s": 13.526,
+      "warmup": {
+        "wall_ms": null,
+        "engine_processing_time_ms": 2536,
+        "note": "warm-up run, excluded from aggregates"
+      },
+      "runs": [
+        {
+          "wall_ms": 1658.015,
+          "engine_processing_time_ms": 1657,
+          "rtf": 0.12250821486051502,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1281.958,
+          "engine_processing_time_ms": 1281,
+          "rtf": 0.0947091268776824,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1161.515,
+          "engine_processing_time_ms": 1161,
+          "rtf": 0.08583707752145923,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1168.068,
+          "engine_processing_time_ms": 1168,
+          "rtf": 0.08635461373390559,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1186.402,
+          "engine_processing_time_ms": 1186,
+          "rtf": 0.08768542113733906,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1140.131,
+          "engine_processing_time_ms": 1140,
+          "rtf": 0.08428446888412017,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1171.383,
+          "engine_processing_time_ms": 1171,
+          "rtf": 0.08657641496781117,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1135.506,
+          "engine_processing_time_ms": 1135,
+          "rtf": 0.08391480016094421,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1165.057,
+          "engine_processing_time_ms": 1164,
+          "rtf": 0.0860588787553648,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1145.045,
+          "engine_processing_time_ms": 1144,
+          "rtf": 0.08458020386266095,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1324.928,
+          "engine_processing_time_ms": 1324,
+          "rtf": 0.09788827789699572,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1380.331,
+          "engine_processing_time_ms": 1380,
+          "rtf": 0.10202856759656652,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1389.641,
+          "engine_processing_time_ms": 1389,
+          "rtf": 0.10269397129828327,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1346.049,
+          "engine_processing_time_ms": 1345,
+          "rtf": 0.09944088653433476,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1445.675,
+          "engine_processing_time_ms": 1445,
+          "rtf": 0.10683426099785409,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1417.595,
+          "engine_processing_time_ms": 1417,
+          "rtf": 0.10476411614806867,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1346.641,
+          "engine_processing_time_ms": 1346,
+          "rtf": 0.09951482027896998,
+          "transcript": "Hello, how is."
+        },
+        {
+          "wall_ms": 1542.063,
+          "engine_processing_time_ms": 1542,
+          "rtf": 0.11400583422746782,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1318.805,
+          "engine_processing_time_ms": 1318,
+          "rtf": 0.09744467542918456,
+          "transcript": "Hello, how."
+        },
+        {
+          "wall_ms": 1354.274,
+          "engine_processing_time_ms": 1354,
+          "rtf": 0.10010629023605151,
+          "transcript": "Hello, how."
+        }
+      ],
+      "wall_ms": {
+        "count": 20,
+        "min": 1135.506,
+        "median": 1321.8665,
+        "p50": 1324.928,
+        "p95": 1542.063,
+        "max": 1658.015,
+        "mean": 1303.9541000000002
+      },
+      "engine_processing_time_ms": {
+        "count": 20,
+        "min": 1135,
+        "median": 1321.0,
+        "p50": 1324,
+        "p95": 1542,
+        "max": 1657,
+        "mean": 1303.35
+      },
+      "rtf": {
+        "count": 20,
+        "min": 0.08391480016094421,
+        "median": 0.09766647666309014,
+        "p50": 0.09788827789699572,
+        "p95": 0.11400583422746782,
+        "max": 0.12250821486051502,
+        "mean": 0.09636154607027898
+      }
+    },
+    "en_14_words_gpu_fp16": {
+      "audio_duration_s": 23.905,
+      "warmup": {
+        "wall_ms": null,
+        "engine_processing_time_ms": 2304,
+        "note": "warm-up run, excluded from aggregates"
+      },
+      "runs": [
+        {
+          "wall_ms": 2449.804,
+          "engine_processing_time_ms": 2449,
+          "rtf": 0.10244742972923748,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2425.274,
+          "engine_processing_time_ms": 2425,
+          "rtf": 0.10144345328436133,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2469.201,
+          "engine_processing_time_ms": 2469,
+          "rtf": 0.10328407676663429,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2245.099,
+          "engine_processing_time_ms": 2245,
+          "rtf": 0.09391362994779019,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2303.189,
+          "engine_processing_time_ms": 2303,
+          "rtf": 0.09633990635624089,
+          "transcript": "V you."
+        },
+        {
+          "wall_ms": 2412.812,
+          "engine_processing_time_ms": 2412,
+          "rtf": 0.10089963271005342,
+          "transcript": "V you."
+        },
+        {
+          "wall_ms": 2298.991,
+          "engine_processing_time_ms": 2298,
+          "rtf": 0.09613074459689169,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2592.751,
+          "engine_processing_time_ms": 2592,
+          "rtf": 0.10842945604662457,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2441.265,
+          "engine_processing_time_ms": 2441,
+          "rtf": 0.10211277091427877,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2516.795,
+          "engine_processing_time_ms": 2516,
+          "rtf": 0.10525019730451675,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2504.303,
+          "engine_processing_time_ms": 2504,
+          "rtf": 0.10474820908207867,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2486.598,
+          "engine_processing_time_ms": 2486,
+          "rtf": 0.10399522674842157,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2488.424,
+          "engine_processing_time_ms": 2488,
+          "rtf": 0.10407889145216125,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2328.445,
+          "engine_processing_time_ms": 2328,
+          "rtf": 0.09738571515298688,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2282.167,
+          "engine_processing_time_ms": 2282,
+          "rtf": 0.09546142696697425,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2959.456,
+          "engine_processing_time_ms": 2959,
+          "rtf": 0.12378192918285576,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 3236.704,
+          "engine_processing_time_ms": 3236,
+          "rtf": 0.13536949065080137,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2487.629,
+          "engine_processing_time_ms": 2487,
+          "rtf": 0.1040370591002914,
+          "transcript": "V you."
+        },
+        {
+          "wall_ms": 2354.232,
+          "engine_processing_time_ms": 2354,
+          "rtf": 0.09847335630160273,
+          "transcript": "What you."
+        },
+        {
+          "wall_ms": 2371.124,
+          "engine_processing_time_ms": 2371,
+          "rtf": 0.09918450628339,
+          "transcript": "What you."
+        }
+      ],
+      "wall_ms": {
+        "count": 20,
+        "min": 2245.099,
+        "median": 2445.5344999999998,
+        "p50": 2449.804,
+        "p95": 2959.456,
+        "max": 3236.704,
+        "mean": 2482.71315
+      },
+      "engine_processing_time_ms": {
+        "count": 20,
+        "min": 2245,
+        "median": 2445.0,
+        "p50": 2449,
+        "p95": 2959,
+        "max": 3236,
+        "mean": 2482.25
+      },
+      "rtf": {
+        "count": 20,
+        "min": 0.09391362994779019,
+        "median": 0.10228010032175813,
+        "p50": 0.10244742972923748,
+        "p95": 0.12378192918285576,
+        "max": 0.13536949065080137,
+        "mean": 0.10383835542890966
+      }
+    }
+  },
+  "decode_preprocessing": {
+    "en_5_words_gpu_fp16": {
+      "runs_ms": [
+        20.654,
+        12.857,
+        12.079,
+        12.941,
+        12.849,
+        12.276,
+        11.726,
+        11.677,
+        11.667,
+        11.626,
+        11.261,
+        11.657,
+        11.611,
+        11.666,
+        11.061,
+        10.894,
+        10.417,
+        11.486,
+        10.389,
+        12.446
+      ],
+      "ms": {
+        "count": 20,
+        "min": 10.389,
+        "median": 11.6665,
+        "p50": 11.667,
+        "p95": 12.941,
+        "max": 20.654,
+        "mean": 12.162
+      },
+      "note": "load_and_preprocess_audio only; excludes engine inference"
+    },
+    "en_14_words_gpu_fp16": {
+      "runs_ms": [
+        24.629,
+        22.688,
+        28.788,
+        21.744,
+        23.292,
+        21.361,
+        20.677,
+        20.484,
+        21.079,
+        23.758,
+        20.658,
+        20.366,
+        21.142,
+        21.984,
+        22.028,
+        23.601,
+        21.111,
+        20.073,
+        22.532,
+        19.4
+      ],
+      "ms": {
+        "count": 20,
+        "min": 19.4,
+        "median": 21.552500000000002,
+        "p50": 21.744,
+        "p95": 24.629,
+        "max": 28.788,
+        "mean": 22.06975
+      },
+      "note": "load_and_preprocess_audio only; excludes engine inference"
+    }
+  },
+  "service_path": {
+    "sequential_service": {
+      "en_5_words_gpu_fp16": {
+        "runs": [
+          {
+            "wall_ms": 1138.784,
+            "engine_processing_time_ms": 1133,
+            "rtf": 0.08376693267167383,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1604.571,
+            "engine_processing_time_ms": 1602,
+            "rtf": 0.11844185890557941,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1289.81,
+            "engine_processing_time_ms": 1287,
+            "rtf": 0.09515272934549356,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1329.679,
+            "engine_processing_time_ms": 1327,
+            "rtf": 0.09811007913090129,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1465.458,
+            "engine_processing_time_ms": 1463,
+            "rtf": 0.10816506840128756,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1355.992,
+            "engine_processing_time_ms": 1353,
+            "rtf": 0.10003235649141631,
+            "transcript": "Hello, how."
+          },
+          {
+            "wall_ms": 1672.749,
+            "engine_processing_time_ms": 1669,
+            "rtf": 0.12339541979613734,
+            "transcript": "Hello, how."
+          },
+          {
+            "wall_ms": 1309.844,
+            "engine_processing_time_ms": 1307,
+            "rtf": 0.09663140423819742,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1652.312,
+            "engine_processing_time_ms": 1649,
+            "rtf": 0.12191674490343349,
+            "transcript": "Hello, how."
+          },
+          {
+            "wall_ms": 1384.773,
+            "engine_processing_time_ms": 1382,
+            "rtf": 0.1021764350858369,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1339.6,
+            "engine_processing_time_ms": 1337,
+            "rtf": 0.09884941657725323,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1403.132,
+            "engine_processing_time_ms": 1400,
+            "rtf": 0.10350724248927039,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1641.354,
+            "engine_processing_time_ms": 1639,
+            "rtf": 0.12117740745708155,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1493.205,
+            "engine_processing_time_ms": 1490,
+            "rtf": 0.11016127950643778,
+            "transcript": "Hello, how."
+          },
+          {
+            "wall_ms": 1735.235,
+            "engine_processing_time_ms": 1733,
+            "rtf": 0.1281271794527897,
+            "transcript": "Hello, how."
+          },
+          {
+            "wall_ms": 1681.403,
+            "engine_processing_time_ms": 1679,
+            "rtf": 0.12413475724248928,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1474.297,
+            "engine_processing_time_ms": 1472,
+            "rtf": 0.1088304721030043,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1542.712,
+            "engine_processing_time_ms": 1539,
+            "rtf": 0.11378403299356224,
+            "transcript": "Hello, how."
+          },
+          {
+            "wall_ms": 1914.222,
+            "engine_processing_time_ms": 1911,
+            "rtf": 0.1412873859978541,
+            "transcript": "Hello, how is."
+          },
+          {
+            "wall_ms": 1709.178,
+            "engine_processing_time_ms": 1706,
+            "rtf": 0.12613096834763948,
+            "transcript": "Hello, how is."
+          }
+        ],
+        "wall_ms": {
+          "count": 20,
+          "min": 1138.784,
+          "median": 1483.751,
+          "p50": 1493.205,
+          "p95": 1735.235,
+          "max": 1914.222,
+          "mean": 1506.9155
+        },
+        "rtf": {
+          "count": 20,
+          "min": 0.08376693267167383,
+          "median": 0.10949587580472103,
+          "p50": 0.11016127950643778,
+          "p95": 0.1281271794527897,
+          "max": 0.1412873859978541,
+          "mean": 0.11118895855686697
+        },
+        "note": "SpeechService path incl. routing + semaphore; queue wait not separately instrumented"
+      },
+      "en_14_words_gpu_fp16": {
+        "runs": [
+          {
+            "wall_ms": 2389.285,
+            "engine_processing_time_ms": 2386,
+            "rtf": 0.0998119915614376,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2522.087,
+            "engine_processing_time_ms": 2519,
+            "rtf": 0.10537569436012628,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2300.355,
+            "engine_processing_time_ms": 2298,
+            "rtf": 0.09613074459689169,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2557.12,
+            "engine_processing_time_ms": 2554,
+            "rtf": 0.10683982667557065,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2427.791,
+            "engine_processing_time_ms": 2423,
+            "rtf": 0.10135978858062165,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2614.768,
+            "engine_processing_time_ms": 2612,
+            "rtf": 0.10926610308402138,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2519.103,
+            "engine_processing_time_ms": 2517,
+            "rtf": 0.1052920296563866,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2678.94,
+            "engine_processing_time_ms": 2676,
+            "rtf": 0.11194337360369111,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2391.918,
+            "engine_processing_time_ms": 2389,
+            "rtf": 0.0999374886170471,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2649.056,
+            "engine_processing_time_ms": 2647,
+            "rtf": 0.11073023539946575,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2308.51,
+            "engine_processing_time_ms": 2306,
+            "rtf": 0.09646540341185042,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2715.134,
+            "engine_processing_time_ms": 2712,
+            "rtf": 0.11344933827100535,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2264.193,
+            "engine_processing_time_ms": 2262,
+            "rtf": 0.09462477992957746,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2335.431,
+            "engine_processing_time_ms": 2333,
+            "rtf": 0.09759487691233609,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2276.846,
+            "engine_processing_time_ms": 2274,
+            "rtf": 0.09512676815201554,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2246.241,
+            "engine_processing_time_ms": 2244,
+            "rtf": 0.09387179759592036,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2610.637,
+            "engine_processing_time_ms": 2608,
+            "rtf": 0.10909877367654201,
+            "transcript": "What you."
+          },
+          {
+            "wall_ms": 2316.59,
+            "engine_processing_time_ms": 2314,
+            "rtf": 0.09680006222680913,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2431.987,
+            "engine_processing_time_ms": 2429,
+            "rtf": 0.10161078269184069,
+            "transcript": "V you."
+          },
+          {
+            "wall_ms": 2326.8,
+            "engine_processing_time_ms": 2324,
+            "rtf": 0.09721838574550752,
+            "transcript": "What you."
+          }
+        ],
+        "wall_ms": {
+          "count": 20,
+          "min": 2246.241,
+          "median": 2409.8545000000004,
+          "p50": 2427.791,
+          "p95": 2678.94,
+          "max": 2715.134,
+          "mean": 2444.1396
+        },
+        "rtf": {
+          "count": 20,
+          "min": 0.09387179759592036,
+          "median": 0.10064863859883438,
+          "p50": 0.10135978858062165,
+          "p95": 0.11194337360369111,
+          "max": 0.11344933827100535,
+          "mean": 0.10212741223743323
+        },
+        "note": "SpeechService path incl. routing + semaphore; queue wait not separately instrumented"
+      }
+    },
+    "concurrent_service": {
+      "note": "semaphore wait not isolated; batch wall time includes queueing",
+      "levels": {}
+    }
+  },
+  "completed_at": "2026-11-14T10:30:38.384302+00:00"
+}

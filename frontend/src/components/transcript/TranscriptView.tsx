@@ -24,57 +24,38 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
   return (
     <div
-      className={`panel ${className}`}
+      className={`surface-card conv-card conv-user ${className}`}
       role="region"
       aria-label="User speech transcript"
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-md)',
         padding: '1.25rem',
         display: 'flex',
         flexDirection: 'column',
         gap: '0.75rem',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            User Speech
-          </span>
+      <div className="card-head">
+        <div className="card-title">
+          <span>User Speech</span>
           {languageLabel && (
             <Badge variant="accent" style={{ textTransform: 'uppercase' }}>
-              <Globe size={11} style={{ marginRight: '3px' }} />
+              <Globe size={11} aria-hidden="true" />
               {languageLabel}
             </Badge>
           )}
         </div>
 
         {latencyMs !== undefined && latencyMs > 0 && (
-          <div
-            className="mono"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              fontSize: '0.75rem',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <Clock size={12} />
+          <div className="meta-mono">
+            <Clock size={12} aria-hidden="true" />
             <span>ASR: {Math.round(latencyMs)}ms</span>
           </div>
         )}
       </div>
 
       <div
-        style={{
-          minHeight: '48px',
-          fontSize: '1.05rem',
-          lineHeight: 1.5,
-          color: transcript ? 'var(--text-primary)' : 'var(--text-muted)',
-          fontStyle: transcript ? 'normal' : 'italic',
-        }}
+        className={`transcript-body ${transcript ? 'has-text' : 'empty-hint'}`}
+        style={{ minHeight: '48px', fontSize: '1.05rem', lineHeight: 'var(--leading-normal)' }}
       >
         {transcript ? (
           transcript
@@ -86,19 +67,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
       </div>
 
       {audioEvents.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Audio Events:</span>
+        <div className="chip-row">
+          <span className="chip-label">Audio Events:</span>
           {audioEvents.map((evt, idx) => (
-            <span
-              key={idx}
-              style={{
-                fontSize: '0.7rem',
-                backgroundColor: 'var(--bg-surface-hover)',
-                color: 'var(--text-secondary)',
-                padding: '0.1rem 0.4rem',
-                borderRadius: 'var(--radius-sm)',
-              }}
-            >
+            <span key={idx} className="chip">
               {evt}
             </span>
           ))}

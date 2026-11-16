@@ -1,12 +1,25 @@
 import React, { useEffect } from 'react';
 import { Mic, Square } from 'lucide-react';
+import { formatElapsedSeconds } from '../../lib/formatters';
+import { shouldHandleSpaceShortcut } from '../../lib/spaceShortcut';
+import { micPhase } from '../../lib/micControl';
+
+/** Seconds of mic-active time after which the duration-limit warning appears. */
+export const DURATION_WARNING_SECONDS = 25;
 
 export interface MicrophoneControlProps {
   isRecording: boolean;
   onToggle: () => void;
   disabled?: boolean;
   isConnecting?: boolean;
+  /** True while a recording start is pending (permission/pipeline init);
+   *  the control acts as a cancel affordance in this state. */
+  isStarting?: boolean;
+  /** True while a modal dialog (e.g. AuthModal) owns the keyboard. */
+  modalOpen?: boolean;
   speechDetected?: boolean;
+  /** Elapsed microphone-active seconds; only meaningful while isRecording. */
+  elapsedSeconds?: number;
 }
 
 export const MicrophoneControl: React.FC<MicrophoneControlProps> = ({
@@ -14,46 +27,53 @@ export const MicrophoneControl: React.FC<MicrophoneControlProps> = ({
   onToggle,
   disabled = false,
   isConnecting = false,
+  isStarting = false,
+  modalOpen = false,
   speechDetected = false,
+  elapsedSeconds = 0,
 }) => {
-  // Global shortcut: Space toggles microphone when not focused on an input element
+  // Global shortcut: Space toggles microphone from non-interactive content.
+  // Interactive elements keep their native Space/Enter activation, repeats
+  // are ignored, and the shortcut is inert while disabled or modal-blocked.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.code === 'Space' &&
-        !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
-      ) {
-        e.preventDefault();
-        if (!disabled) {
-          onToggle();
-        }
-      }
+      if (!shouldHandleSpaceShortcut(e, { disabled, modalOpen })) return;
+      e.preventDefault();
+      onToggle();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onToggle, disabled]);
+  }, [onToggle, disabled, modalOpen]);
 
-  const buttonLabel = isRecording
-    ? 'Stop listening'
-    : isConnecting
-    ? 'Connecting to speech server...'
-    : 'Start listening';
+  const phase = micPhase(isRecording, isStarting);
+  const buttonLabel =
+    phase === 'recording'
+      ? 'Stop listening'
+      : phase === 'starting'
+      ? 'Cancel microphone startup'
+      : isConnecting
+      ? 'Connecting to speech server...'
+      : 'Start listening';
+
+  const buttonText =
+    phase === 'recording' ? 'Stop Listening' : phase === 'starting' ? 'Starting…' : 'Start Listening';
+
+  const buttonClass = [
+    'mic-button',
+    phase === 'recording' ? 'is-recording' : '',
+    phase === 'starting' ? 'is-starting' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {/* Animated pulse halo when actively recording */}
+    <div className="mic-console">
+      <div className="mic-stage">
+        {/* Animated halo while actively recording */}
         {isRecording && (
           <span
-            style={{
-              position: 'absolute',
-              width: '88px',
-              height: '88px',
-              borderRadius: '50%',
-              backgroundColor: speechDetected ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.3)',
-              animation: 'pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              pointerEvents: 'none',
-            }}
+            className={`mic-halo ${speechDetected ? 'speech' : ''}`}
+            aria-hidden="true"
           />
         )}
 
@@ -63,62 +83,55 @@ export const MicrophoneControl: React.FC<MicrophoneControlProps> = ({
           disabled={disabled || isConnecting}
           aria-label={buttonLabel}
           aria-pressed={isRecording}
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.6rem',
-            padding: '0.95rem 2.2rem',
-            fontSize: '1rem',
-            fontWeight: 600,
-            borderRadius: 'var(--radius-full)',
-            backgroundColor: isRecording
-              ? 'var(--color-danger)'
-              : disabled
-              ? 'var(--bg-surface-hover)'
-              : 'var(--color-voice)',
-            color: disabled ? 'var(--text-muted)' : '#FFFFFF',
-            border: 'none',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            boxShadow: isRecording
-              ? '0 0 20px rgba(239, 68, 68, 0.4)'
-              : '0 4px 14px rgba(59, 130, 246, 0.25)',
-            transition: 'all 0.2s ease',
-          }}
+          className={buttonClass}
         >
-          {isRecording ? <Square size={20} /> : <Mic size={20} />}
-          <span>{isRecording ? 'Stop Listening' : 'Start Listening'}</span>
+          <span className="mic-button-face">
+            {phase === 'recording' ? <Square size={22} /> : <Mic size={26} />}
+            <span className="mic-button-label">{buttonText}</span>
+          </span>
         </button>
       </div>
 
       <div
         aria-live="polite"
-        style={{
-          fontSize: '0.8rem',
-          color: isRecording ? 'var(--color-danger)' : 'var(--text-muted)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.4rem',
-        }}
+        className={`mic-status ${isRecording ? 'is-recording' : ''}`}
       >
-        {isRecording ? (
+        {phase === 'starting' ? (
+          <span>Starting microphone…</span>
+        ) : phase === 'recording' ? (
           <>
-            <span
-              style={{
-                display: 'inline-block',
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--color-danger)',
-              }}
-            />
+            <span className="rec-dot" aria-hidden="true" />
             <span>{speechDetected ? 'Speech detected (VAD)' : 'Listening for speech...'}</span>
           </>
         ) : (
-          <span>Press button or <kbd style={{ fontFamily: 'var(--font-mono)', padding: '0.1rem 0.35rem', background: 'var(--bg-surface-hover)', borderRadius: '3px' }}>Space</kbd> to talk</span>
+          <span>Press button or <kbd>Space</kbd> to talk</span>
         )}
       </div>
+
+      {!isRecording && (
+        <p className="mic-hint">
+          Your browser will ask for microphone access before recording.
+        </p>
+      )}
+
+      {isRecording && (
+        <div className="mic-timer-block">
+          {/* role="timer" has implicit aria-live="off": the per-second tick is
+              never announced; screen readers get state via the status line. */}
+          <span
+            role="timer"
+            aria-label={`Recording time ${formatElapsedSeconds(elapsedSeconds)}`}
+            className="mic-timer"
+          >
+            {formatElapsedSeconds(elapsedSeconds)}
+          </span>
+          {elapsedSeconds >= DURATION_WARNING_SECONDS && (
+            <span role="status" className="mic-warning">
+              Recording session time — the server discards utterances buffered beyond ~30 seconds. Finish this thought soon.
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

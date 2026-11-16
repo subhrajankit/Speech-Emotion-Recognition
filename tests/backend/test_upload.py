@@ -78,8 +78,10 @@ def test_upload_with_language_hint(client, valid_wav_bytes):
     assert res["language"] == "en"
 
 
-def test_upload_with_hindi_language_hint(client, valid_wav_bytes):
+def test_upload_with_hindi_language_hint(client, valid_wav_bytes, monkeypatch):
     """Verifies Hindi language hint routes to IndicConformer with emotion=None."""
+    from backend.app.core.config import settings
+    monkeypatch.setattr(settings, "ASR_ENGLISH_ONLY", False)
     files = {"file": ("speech.wav", valid_wav_bytes, "audio/wav")}
     data = {"language_hint": "hi"}
     response = client.post("/api/speech/upload", files=files, data=data)

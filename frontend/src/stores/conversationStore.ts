@@ -120,6 +120,21 @@ class ConversationStore {
   }
 
   /**
+   * Marks the active turn as no longer streaming without fabricating a
+   * completion — used when the connection drops mid-response. Preserves the
+   * transcript, emotion, and any partial assistant text already received.
+   * Returns true when a streaming turn was actually finalized.
+   */
+  public cancelActiveStream(): boolean {
+    if (!this.activeTurnId) return false;
+    const item = this.items.find((i) => i.id === this.activeTurnId);
+    if (!item || !item.isStreaming) return false;
+    item.isStreaming = false;
+    this.notify();
+    return true;
+  }
+
+  /**
    * Backwards compatible addItem method.
    */
   public addItem(
@@ -179,6 +194,7 @@ export function useConversationHistory() {
       conversationStore.completeLlmTurn(text, sources, turnId),
     setAssistantError: (errorMsg: string, turnId?: string) =>
       conversationStore.setAssistantError(errorMsg, turnId),
+    cancelActiveStream: () => conversationStore.cancelActiveStream(),
     addItem: (item: Omit<HistoryItem, 'id' | 'timestamp'>) =>
       conversationStore.addItem(item),
     clearHistory: () => conversationStore.clear(),

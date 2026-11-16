@@ -18,10 +18,43 @@ from ai.inference.engine import SpeechEngine
 from ai.inference.sensevoice import SenseVoiceSpeechEngine
 from ai.inference.indicconformer import IndicConformerSpeechEngine
 from ai.routing.language_router import LanguageRouter, RoutingDecision
+from ai.routing.language_identifier import VoxLingua107LanguageIdentifier
 from ai.preprocessing.audio import load_and_preprocess_audio
 from backend.app.core.config import settings
 
 logger = logging.getLogger("voicesense.speech_service")
+
+
+class InvalidLanguageHintError(Exception):
+    """Raised when a language hint is not allowed by the active ASR policy."""
+
+
+def normalize_language_hint(language_hint: Optional[str]) -> Optional[str]:
+    """
+    Validates language hints for English-only MVP mode.
+    When ASR_ENGLISH_ONLY is disabled, returns the hint unchanged to preserve
+    existing multilingual routing behavior.
+    """
+    if not settings.ASR_ENGLISH_ONLY:
+        return language_hint
+
+    if language_hint is None:
+        return None
+    if not isinstance(language_hint, str):
+        raise InvalidLanguageHintError(
+            "language_hint must be a string when ASR_ENGLISH_ONLY=true."
+        )
+
+    cleaned = language_hint.strip().lower()
+    if cleaned in {"", "auto"}:
+        return None
+    if cleaned == "en":
+        return "en"
+
+    raise InvalidLanguageHintError(
+        "English-only ASR mode accepts only language_hint 'en', 'auto', or empty. "
+        f"Received: {language_hint!r}"
+    )
 
 
 class SpeechService:
@@ -33,12 +66,15 @@ class SpeechService:
     def __init__(self):
         self._sensevoice: Optional[SenseVoiceSpeechEngine] = None
         self._indicconformer: Optional[IndicConformerSpeechEngine] = None
+        self._emotion2vec: Optional[Any] = None
         self._router: Optional[LanguageRouter] = None
         self._engine: Optional[SpeechEngine] = None  # Default engine alias
         self._semaphore: Optional[asyncio.Semaphore] = None
+        self._ser_semaphore: Optional[asyncio.Semaphore] = None
         self._is_initialized: bool = False
         self._init_error: Optional[str] = None
         self._indic_init_error: Optional[str] = None
+        self._emotion2vec_error: Optional[str] = None
 
     def initialize(self) -> None:
         """
@@ -68,8 +104,11 @@ class SpeechService:
                 self._init_error = str(e)
                 self._sensevoice = None
 
-        # 2. Initialize IndicConformer-600m (Indic ASR)
-        if self._indicconformer is None:
+        # 2. Initialize IndicConformer-600m (Indic ASR) — skipped in English-only MVP mode
+        if settings.ASR_ENGLISH_ONLY:
+            self._indicconformer = None
+            self._indic_init_error = None
+        elif self._indicconformer is None:
             try:
                 self._indicconformer = IndicConformerSpeechEngine(
                     model_dir=settings.INDICCONFORMER_MODEL_DIR,
@@ -89,12 +128,54 @@ class SpeechService:
         # Default engine reference
         self._engine = self._sensevoice
 
-        # 3. Initialize LanguageRouter
+        # 3. Initialize LanguageRouter (Tier-2 spoken LID only when explicitly enabled)
+        lid_detector = None
+        if settings.LID_ENABLED and not settings.ASR_ENGLISH_ONLY:
+            try:
+                candidate = VoxLingua107LanguageIdentifier(
+                    model_dir=settings.LID_MODEL_DIR,
+                    auto_load=auto_load,
+                )
+                if not candidate.has_required_files():
+                    raise RuntimeError(
+                        f"LID artifacts missing in '{settings.LID_MODEL_DIR}'."
+                    )
+                lid_detector = candidate
+                logger.info("Tier-2 spoken LID enabled (VoxLingua107).")
+            except Exception as e:
+                logger.warning(
+                    f"LID_ENABLED=true but detector initialization failed ({e}). "
+                    "Tier-2 LID disabled; unhinted utterances use the default engine."
+                )
+                lid_detector = None
+
         self._router = LanguageRouter(
             default_engine="sensevoice",
             default_language="en",
             lid_confidence_threshold=settings.LID_CONFIDENCE_THRESHOLD,
+            lid_detector=lid_detector,
         )
+
+        # 4. Initialize Emotion2Vec (Dedicated SER Engine) if explicitly enabled
+        if settings.EMOTION2VEC_ENABLED and self._emotion2vec is None:
+            try:
+                from ai.inference.emotion2vec import Emotion2VecSpeechEngine
+                self._emotion2vec = Emotion2VecSpeechEngine(
+                    model_dir=settings.EMOTION2VEC_MODEL_DIR,
+                    device=settings.EMOTION2VEC_DEVICE,
+                    threads=settings.EMOTION2VEC_THREADS,
+                    confidence_threshold=settings.EMOTION2VEC_CONFIDENCE_THRESHOLD,
+                    auto_load=auto_load,
+                )
+                self._emotion2vec_error = None
+                logger.info("Emotion2Vec SER engine initialized successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Emotion2Vec model ({e}).")
+                self._emotion2vec_error = str(e)
+                self._emotion2vec = None
+        elif not settings.EMOTION2VEC_ENABLED:
+            self._emotion2vec = None
+            self._emotion2vec_error = None
 
         # Preload default engine if configured
         if settings.PRELOAD_DEFAULT_ENGINE:
@@ -118,6 +199,39 @@ class SpeechService:
             self._sem_loop = curr_loop
         return self._semaphore
 
+    def _get_ser_semaphore(self) -> asyncio.Semaphore:
+        """Lazily binds SER semaphore (concurrency=1 on CPU) to running event loop."""
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+
+        if self._ser_semaphore is None or getattr(self, "_ser_sem_loop", None) != curr_loop:
+            self._ser_semaphore = asyncio.Semaphore(1)
+            self._ser_sem_loop = curr_loop
+        return self._ser_semaphore
+
+    def _get_emotion2vec_engine(self) -> Optional[Any]:
+        """Returns or lazily creates the Emotion2Vec engine singleton if enabled."""
+        if not settings.EMOTION2VEC_ENABLED:
+            return None
+        if self._emotion2vec is None and self._emotion2vec_error is None:
+            try:
+                from ai.inference.emotion2vec import Emotion2VecSpeechEngine
+                self._emotion2vec = Emotion2VecSpeechEngine(
+                    model_dir=settings.EMOTION2VEC_MODEL_DIR,
+                    device=settings.EMOTION2VEC_DEVICE,
+                    threads=settings.EMOTION2VEC_THREADS,
+                    confidence_threshold=settings.EMOTION2VEC_CONFIDENCE_THRESHOLD,
+                    auto_load=False,
+                )
+                logger.info("Emotion2Vec engine lazily created.")
+            except Exception as e:
+                logger.warning(f"Lazy Emotion2Vec initialization failed ({e}).")
+                self._emotion2vec_error = str(e)
+                self._emotion2vec = None
+        return self._emotion2vec
+
     @property
     def is_ready(self) -> bool:
         return self._is_initialized and self._sensevoice is not None
@@ -134,6 +248,10 @@ class SpeechService:
     def sensevoice(self) -> Optional[SenseVoiceSpeechEngine]:
         return self._sensevoice
 
+    @property
+    def emotion2vec(self) -> Optional[Any]:
+        return self._emotion2vec
+
     def get_engine_for_utterance(
         self,
         audio: np.ndarray,
@@ -144,6 +262,28 @@ class SpeechService:
         Determines the routing decision and returns the selected speech engine,
         canonical engine name, and the routing decision.
         """
+        # English-only MVP: deterministic SenseVoice routing with no router/LID invocation.
+        if settings.ASR_ENGLISH_ONLY:
+            normalized_hint = normalize_language_hint(language_hint)
+            if normalized_hint == "en":
+                decision = RoutingDecision(
+                    language="en",
+                    confidence=1.0,
+                    engine="sensevoice",
+                    source="hint",
+                    debug={"policy": "english_only_explicit_hint"}
+                )
+            else:
+                decision = RoutingDecision(
+                    language="en",
+                    confidence=None,
+                    engine="sensevoice",
+                    source="default",
+                    debug={"policy": "english_only_default"}
+                )
+            selected_engine = self._sensevoice or self._engine
+            return selected_engine, "sensevoice", decision
+
         try:
             if self._router is not None:
                 decision: RoutingDecision = self._router.route(
@@ -192,7 +332,10 @@ class SpeechService:
         if not self.is_ready:
             raise RuntimeError("SpeechService is not initialized.")
 
-        selected_engine, engine_name, decision = self.get_engine_for_utterance(
+        # Routing (incl. Tier-2 LID inference) runs off the event loop so a
+        # synchronous detector cannot stall other WebSocket sessions.
+        selected_engine, engine_name, decision = await asyncio.to_thread(
+            self.get_engine_for_utterance,
             audio=audio,
             sample_rate=sample_rate,
             language_hint=language_hint,
@@ -222,7 +365,6 @@ class SpeechService:
                 if result.debug is not None:
                     result.debug["routing"] = decision.model_dump()
 
-                return result
         except Exception as engine_err:
             # Fallback to default engine if IndicConformer or non-default engine fails
             default_engine = self._sensevoice or self._engine
@@ -246,8 +388,68 @@ class SpeechService:
                         "to_engine": "sensevoice",
                         "error": str(engine_err)
                     }
-                    return fallback_res
-            raise
+                    result = fallback_res
+            else:
+                raise
+
+        # Acoustic SER (emotion2vec_plus_base) classification
+        if settings.EMOTION2VEC_ENABLED:
+            ser_engine = self._get_emotion2vec_engine()
+            if ser_engine is not None:
+                should_run_ser = (
+                    settings.EMOTION_ROUTING_STRATEGY == "dedicated_primary"
+                    or (settings.EMOTION_ROUTING_STRATEGY == "hybrid_fallback" and result.emotion is None)
+                )
+                if should_run_ser:
+                    ser_sem = self._get_ser_semaphore()
+                    try:
+                        async with ser_sem:
+                            is_ser_loaded = getattr(ser_engine, "is_loaded", True)
+                            if not is_ser_loaded:
+                                if status_callback is not None:
+                                    await status_callback("loading_model", "emotion2vec")
+                                if hasattr(ser_engine, "load"):
+                                    await asyncio.to_thread(ser_engine.load)
+                                if status_callback is not None:
+                                    await status_callback("model_ready", "emotion2vec")
+
+                            ser_res = await asyncio.to_thread(
+                                ser_engine.classify,
+                                audio=audio,
+                                sample_rate=sample_rate,
+                            )
+
+                            if result.debug is None:
+                                result.debug = {}
+
+                            result.emotion = ser_res.primary if ser_res.primary != "unknown" else None
+                            result.confidence = ser_res.confidence
+                            result.emotion_scores = ser_res.scores
+                            result.debug["emotion_source_model"] = ser_res.model_version
+                            result.debug["emotion_raw_label"] = getattr(ser_res, "raw_label", None)
+                            result.debug["emotion_processing_time_ms"] = ser_res.processing_time_ms
+                            result.debug["is_fallback"] = (
+                                settings.EMOTION_ROUTING_STRATEGY == "hybrid_fallback"
+                            )
+                    except Exception as ser_err:
+                        logger.warning(
+                            f"Emotion2Vec classification failed ({ser_err}). "
+                            "Preserving primary ASR result and SenseVoice emotion."
+                        )
+                        if result.debug is None:
+                            result.debug = {}
+                        result.debug["emotion_error"] = str(ser_err)
+                        result.debug["emotion_source_model"] = "sensevoice_fallback"
+                        result.debug["is_fallback"] = True
+        else:
+            if result.debug is None:
+                result.debug = {}
+            if "emotion_source_model" not in result.debug:
+                result.debug["emotion_source_model"] = "sensevoice"
+            if "is_fallback" not in result.debug:
+                result.debug["is_fallback"] = False
+
+        return result
 
     async def transcribe_audio_bytes(
         self,
@@ -325,6 +527,15 @@ class SpeechService:
             emotion_status = "unhealthy"
             overall_status = "degraded"
 
+        # Explicit emotion2vec component health if feature-flagged
+        if settings.EMOTION2VEC_ENABLED:
+            if self._emotion2vec_error:
+                emotion_status = "unhealthy"
+            elif self._emotion2vec and self._emotion2vec.is_loaded:
+                emotion_status = "ok"
+            else:
+                emotion_status = "ready"
+
         components = {
             "asr": asr_status,
             "emotion": emotion_status,
@@ -338,11 +549,16 @@ class SpeechService:
             "model_version": self._sensevoice.model_version if self._sensevoice else "none",
             "indic_model_version": self._indicconformer.model_version if self._indicconformer else "none",
             "concurrency_limit": settings.INFERENCE_CONCURRENCY_LIMIT,
+            "emotion2vec_enabled": settings.EMOTION2VEC_ENABLED,
+            "emotion_routing_strategy": settings.EMOTION_ROUTING_STRATEGY,
+            "emotion2vec_loaded": self._emotion2vec.is_loaded if self._emotion2vec else False,
         }
         if self._init_error:
             details["sensevoice_init_warning"] = self._init_error
         if self._indic_init_error:
             details["indicconformer_init_warning"] = self._indic_init_error
+        if self._emotion2vec_error:
+            details["emotion2vec_init_warning"] = self._emotion2vec_error
 
         return {
             "status": overall_status,

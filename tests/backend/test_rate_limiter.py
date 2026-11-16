@@ -55,6 +55,51 @@ def test_session_rate_limiter_upload_size_limit():
         limiter.validate_upload_size(1001)
 
 
+def test_session_rate_limiter_refund_utterance_frees_slot():
+    """refund_utterance removes the newest recorded attempt so confirmed
+    no-speech does not consume the utterance budget."""
+    limiter = SessionRateLimiter(max_utterances_per_minute=2)
+    session_id = "test_sess_refund"
+
+    limiter.record_utterance(session_id)
+    limiter.record_utterance(session_id)
+
+    with pytest.raises(UtteranceRateLimitExceeded):
+        limiter.record_utterance(session_id)
+
+    # Refund one attempt -> exactly one slot is freed.
+    limiter.refund_utterance(session_id)
+    limiter.record_utterance(session_id)
+
+    with pytest.raises(UtteranceRateLimitExceeded):
+        limiter.record_utterance(session_id)
+
+
+def test_session_rate_limiter_refund_unknown_session_is_noop():
+    """Refunding a session with no history must not raise or corrupt state."""
+    limiter = SessionRateLimiter(max_utterances_per_minute=1)
+    limiter.refund_utterance("never_recorded")
+
+    # Session still functions normally afterwards.
+    limiter.record_utterance("never_recorded")
+    with pytest.raises(UtteranceRateLimitExceeded):
+        limiter.record_utterance("never_recorded")
+
+
+def test_session_rate_limiter_refund_does_not_touch_other_sessions():
+    """A refund only affects the given session's own history."""
+    limiter = SessionRateLimiter(max_utterances_per_minute=1)
+    limiter.record_utterance("session_a")
+    limiter.record_utterance("session_b")
+
+    limiter.refund_utterance("session_a")
+
+    # session_a has a free slot again; session_b is still at its limit.
+    limiter.record_utterance("session_a")
+    with pytest.raises(UtteranceRateLimitExceeded):
+        limiter.record_utterance("session_b")
+
+
 def test_ip_rate_limiter():
     """Verifies client IP rate limiter and HTTP 429 response."""
     limiter = IPRateLimiter(limit=2, window_seconds=60.0)

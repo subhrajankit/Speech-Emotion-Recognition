@@ -1,0 +1,9 @@
+# VoiceSense AI — Local Development & Test Suite Dependencies
+# Mirrors CI-lite runtime + pytest tooling without requiring heavy ML frameworks.
+
+-r runtime.txt
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+requests>=2.31.0
+

@@ -6,7 +6,7 @@ import { formatErrorMessage } from '../../lib/formatters';
 export interface ResponseViewProps {
   responseText?: string;
   isThinking?: boolean;
-  isAssistantConfigured?: boolean;
+  isAssistantAvailable?: boolean;
   isAssistantUnavailable?: boolean;
   errorCode?: string | null;
   errorMessage?: string | null;
@@ -18,7 +18,7 @@ export interface ResponseViewProps {
 export const ResponseView: React.FC<ResponseViewProps> = ({
   responseText = '',
   isThinking = false,
-  isAssistantConfigured = false,
+  isAssistantAvailable = false,
   isAssistantUnavailable = false,
   errorCode = null,
   errorMessage = null,
@@ -30,100 +30,59 @@ export const ResponseView: React.FC<ResponseViewProps> = ({
 
   return (
     <div
-      className={`panel ${className}`}
+      className={`surface-card conv-card conv-assistant ${className}`}
       role="region"
       aria-label="AI Assistant response"
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-md)',
         padding: '1.25rem',
         display: 'flex',
         flexDirection: 'column',
         gap: '0.75rem',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Bot size={16} style={{ color: 'var(--color-voice)' }} />
-          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            AI Assistant
-          </span>
+      <div className="card-head">
+        <div className="card-title">
+          <Bot size={16} style={{ color: 'var(--color-voice)' }} aria-hidden="true" />
+          <span>AI Assistant</span>
           {displayError || isAssistantUnavailable ? (
             <Badge variant="warning">Assistant Offline / Error</Badge>
-          ) : !isAssistantConfigured ? (
+          ) : !isAssistantAvailable ? (
             <Badge variant="neutral">Perception Mode</Badge>
           ) : null}
         </div>
 
         {totalLatencyMs !== undefined && totalLatencyMs > 0 && (
-          <div
-            className="mono"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              fontSize: '0.75rem',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <Clock size={12} />
+          <div className="meta-mono">
+            <Clock size={12} aria-hidden="true" />
             <span>Turn: {totalLatencyMs}ms</span>
           </div>
         )}
       </div>
 
-      <div
-        style={{
-          minHeight: '48px',
-          fontSize: '1rem',
-          lineHeight: 1.5,
-        }}
-      >
+      <div style={{ minHeight: '48px', fontSize: '1rem', lineHeight: 'var(--leading-normal)' }}>
         {isThinking ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-energy)' }}>
-            <span className="animate-spin">●</span>
+          <div className="thinking-row">
+            <span className="animate-spin" aria-hidden="true">●</span>
             <span>Synthesizing response...</span>
           </div>
         ) : displayError ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.5rem',
-              padding: '0.65rem 0.9rem',
-              backgroundColor: 'rgba(245, 158, 11, 0.08)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.85rem',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <AlertCircle size={16} style={{ color: 'var(--color-energy)', flexShrink: 0, marginTop: '2px' }} />
+          <div className="notice notice-warning">
+            <AlertCircle size={16} className="notice-icon" style={{ color: 'var(--color-energy)' }} aria-hidden="true" />
             <span>{displayError}</span>
           </div>
         ) : responseText ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <div style={{ color: 'var(--text-primary)' }}>{responseText}</div>
+            <div className="response-body" style={{ color: 'var(--text-primary)' }}>{responseText}</div>
 
             {sources && sources.length > 0 && (
-              <div
-                style={{
-                  marginTop: '0.4rem',
-                  padding: '0.5rem 0.75rem',
-                  backgroundColor: 'var(--bg-base)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.78rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
-                  <FileText size={12} />
+              <div className="sources-box">
+                <div className="sources-head">
+                  <FileText size={12} aria-hidden="true" />
                   <span>Sources:</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                <div className="sources-list">
                   {sources.map((s, idx) => (
-                    <div key={idx} style={{ color: 'var(--text-secondary)' }}>
+                    <div key={idx}>
                       • <strong>{s.doc_name}</strong> (relevance: {Math.round(s.score * 100)}%)
                     </div>
                   ))}
@@ -132,45 +91,21 @@ export const ResponseView: React.FC<ResponseViewProps> = ({
             )}
           </div>
         ) : isAssistantUnavailable ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.65rem 0.9rem',
-              backgroundColor: 'rgba(245, 158, 11, 0.08)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.85rem',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <Info size={16} style={{ color: 'var(--color-energy)', flexShrink: 0 }} />
+          <div className="notice notice-warning">
+            <Info size={16} className="notice-icon" style={{ color: 'var(--color-energy)' }} aria-hidden="true" />
             <span>
               Assistant offline. Speech transcription, language detection, and emotion analysis remain active.
             </span>
           </div>
-        ) : !isAssistantConfigured ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.65rem 0.9rem',
-              backgroundColor: 'rgba(59, 130, 246, 0.06)',
-              border: '1px solid rgba(59, 130, 246, 0.15)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.85rem',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <Info size={16} style={{ color: 'var(--color-signal)', flexShrink: 0 }} />
+        ) : !isAssistantAvailable ? (
+          <div className="notice notice-info">
+            <Info size={16} className="notice-icon" style={{ color: 'var(--color-voice)' }} aria-hidden="true" />
             <span>
               Voice perception active. Assistant response will stream here after speech input.
             </span>
           </div>
         ) : (
-          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          <div className="empty-hint">
             Assistant response will appear here after speech input.
           </div>
         )}

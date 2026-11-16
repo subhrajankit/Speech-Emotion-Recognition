@@ -1,0 +1,84 @@
+# ==============================================================================
+# VoiceSense AI — Backend Dockerfile (Multi-stage, CPU default, non-root)
+# Uses requirements/runtime.txt + requirements/ml.txt; TTS stays disabled cleanly.
+# ==============================================================================
+
+FROM python:3.13-slim-bookworm AS builder
+
+ARG USE_CUDA=false
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+
+COPY requirements/runtime.txt requirements/ml.txt /tmp/requirements/
+
+# Install runtime dependencies, then fetch CPU-only PyTorch wheels by default (or CUDA when USE_CUDA=true)
+RUN set -eux; \
+    IDX="${TORCH_INDEX_URL}"; \
+    if [ "${USE_CUDA}" = "true" ] && [ "${IDX}" = "https://download.pytorch.org/whl/cpu" ]; then \
+        IDX="https://download.pytorch.org/whl/cu126"; \
+    fi; \
+    /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements/runtime.txt && \
+    /opt/venv/bin/pip install --no-cache-dir --index-url "${IDX}" "torch>=2.2.0" "torchaudio>=2.2.0" && \
+    /opt/venv/bin/pip install --no-cache-dir --extra-index-url "${IDX}" -r /tmp/requirements/ml.txt
+
+# ------------------------------------------------------------------------------
+FROM python:3.13-slim-bookworm AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PATH="/opt/venv/bin:$PATH" \
+    HOST=0.0.0.0 \
+    PORT=8000 \
+    TTS_ENABLED=false \
+    HF_HOME=/cache/huggingface \
+    MODELSCOPE_CACHE=/cache/modelscope
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    ffmpeg \
+    libgomp1 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 voicesense && \
+    useradd -u 10001 -g voicesense -s /bin/sh -m voicesense
+
+COPY --from=builder /opt/venv /opt/venv
+
+WORKDIR /app
+
+COPY backend/ /app/backend/
+COPY ai/ /app/ai/
+COPY rag/ /app/rag/
+COPY alembic/ /app/alembic/
+COPY alembic.ini /app/alembic.ini
+COPY deployment/docker/entrypoint-backend.sh /usr/local/bin/entrypoint-backend.sh
+
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint-backend.sh && \
+    chmod +x /usr/local/bin/entrypoint-backend.sh && \
+    mkdir -p /app/database /app/data/documents /app/data/index /app/models /app/logs /cache/huggingface /cache/modelscope && \
+    chown -R voicesense:voicesense /app /cache
+
+USER voicesense
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=25s --retries=3 \
+    CMD curl -sf http://127.0.0.1:8000/api/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-backend.sh"]
+
+# Phase 10b keepalive finding: --workers 1 preserves in-process model singletons & rate limiters,
+# and uvicorn defaults (20s/20s) hold through 49s cold loads via _message_pump().
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--ws-ping-interval", "20", "--ws-ping-timeout", "20"]
+

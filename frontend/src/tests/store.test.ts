@@ -80,6 +80,25 @@ describe('ConversationStore Logic', () => {
     expect(conversationStore.getItems()).toEqual([]);
   });
 
+  it('clear() also resets the active turn pointer so no stale turn can be targeted', () => {
+    conversationStore.addSpeechResult({
+      transcript: 'Turn to wipe',
+      language: 'en',
+      emotion: 'happy',
+      confidence: null,
+      processing_time_ms: 50,
+      segmentIndex: 1,
+    });
+    conversationStore.appendLlmDelta('partial');
+
+    conversationStore.clear();
+
+    // A subsequent delta must not resurrect or append to the wiped turn.
+    conversationStore.appendLlmDelta('ghost text');
+    expect(conversationStore.getItems()).toEqual([]);
+    expect(conversationStore.getActiveTurnId()).toBeNull();
+  });
+
   it('trims whitespace on stored transcripts', () => {
     const item = conversationStore.addItem({
       transcript: '   padded speech string   ',
@@ -168,6 +187,55 @@ describe('ConversationStore Logic', () => {
       // Assistant error recorded
       expect(updated.assistantError).toBe('llm_unavailable');
       expect(updated.isStreaming).toBe(false);
+    });
+  });
+
+  describe('cancelActiveStream — connection-loss finalization', () => {
+    it('clears isStreaming while preserving transcript, emotion, and partial reply', () => {
+      conversationStore.addSpeechResult({
+        transcript: 'What is the refund policy?',
+        language: 'en',
+        emotion: 'sad',
+        confidence: null,
+        processing_time_ms: 72,
+        segmentIndex: 1,
+      });
+
+      conversationStore.appendLlmDelta('Partial reply that was cut off');
+      expect(conversationStore.getItems()[0].isStreaming).toBe(true);
+
+      const cancelled = conversationStore.cancelActiveStream();
+      expect(cancelled).toBe(true);
+
+      const turn = conversationStore.getItems()[0];
+      expect(turn.isStreaming).toBe(false);
+      expect(turn.transcript).toBe('What is the refund policy?');
+      expect(turn.emotion).toBe('sad');
+      expect(turn.assistantText).toBe('Partial reply that was cut off');
+      // No fabricated completion or error was injected.
+      expect(turn.assistantError).toBeNull();
+    });
+
+    it('no-ops safely when there is no active turn', () => {
+      expect(conversationStore.cancelActiveStream()).toBe(false);
+      expect(conversationStore.getItems()).toEqual([]);
+    });
+
+    it('no-ops when the active turn is not streaming', () => {
+      conversationStore.addSpeechResult({
+        transcript: 'Done turn',
+        language: 'en',
+        emotion: null,
+        confidence: null,
+        processing_time_ms: 50,
+        segmentIndex: 1,
+      });
+      conversationStore.completeLlmTurn('Full reply.');
+
+      expect(conversationStore.cancelActiveStream()).toBe(false);
+      const turn = conversationStore.getItems()[0];
+      expect(turn.isStreaming).toBe(false);
+      expect(turn.assistantText).toBe('Full reply.');
     });
   });
 });

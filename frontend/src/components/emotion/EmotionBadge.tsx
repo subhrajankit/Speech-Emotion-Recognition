@@ -30,6 +30,13 @@ export const EmotionBadge: React.FC<EmotionBadgeProps> = ({
 
   const getEmotionDetails = () => {
     switch (normalized) {
+      case 'unknown':
+        // Model ran SER and explicitly reported EMO_UNKNOWN/UNK — distinct
+        // from missing emotion metadata which renders "Emotion: -" above.
+        return {
+          icon: <HelpCircle size={13} style={{ marginRight: '4px' }} />,
+          variant: 'neutral' as const,
+        };
       case 'happy':
         return {
           icon: <Smile size={13} style={{ marginRight: '4px' }} />,

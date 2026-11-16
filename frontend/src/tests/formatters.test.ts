@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatEmotion, formatConfidence, formatErrorMessage } from '../lib/formatters';
+import { formatEmotion, formatConfidence, formatElapsedSeconds, formatErrorMessage } from '../lib/formatters';
 
 describe('Null-Safe Display Formatters', () => {
   describe('formatEmotion', () => {
@@ -38,6 +38,22 @@ describe('Null-Safe Display Formatters', () => {
     });
   });
 
+  describe('formatElapsedSeconds', () => {
+    it('formats seconds as m:ss', () => {
+      expect(formatElapsedSeconds(0)).toBe('0:00');
+      expect(formatElapsedSeconds(7)).toBe('0:07');
+      expect(formatElapsedSeconds(59)).toBe('0:59');
+      expect(formatElapsedSeconds(60)).toBe('1:00');
+      expect(formatElapsedSeconds(83)).toBe('1:23');
+      expect(formatElapsedSeconds(600)).toBe('10:00');
+    });
+
+    it('clamps negative and fractional input', () => {
+      expect(formatElapsedSeconds(-5)).toBe('0:00');
+      expect(formatElapsedSeconds(7.9)).toBe('0:07');
+    });
+  });
+
   describe('formatErrorMessage', () => {
     it('maps standard backend error codes to user-friendly messages', () => {
       expect(formatErrorMessage('INFERENCE_ERROR')).toContain('Speech recognition error');
@@ -45,10 +61,15 @@ describe('Null-Safe Display Formatters', () => {
       expect(formatErrorMessage('llm_bad_response')).toContain('invalid or incomplete response');
       expect(formatErrorMessage('tts_unavailable')).toContain('Voice reply synthesis is unavailable');
       expect(formatErrorMessage('RATE_LIMIT_EXCEEDED')).toContain('rate limit exceeded');
-      expect(formatErrorMessage('AUDIO_DURATION_LIMIT_EXCEEDED')).toContain('duration limit exceeded');
+      expect(formatErrorMessage('AUDIO_DURATION_LIMIT_EXCEEDED')).toContain('~30-second audio limit');
+      expect(formatErrorMessage('AUDIO_DURATION_LIMIT_EXCEEDED')).toContain('discarded');
+      expect(formatErrorMessage('AUDIO_DURATION_LIMIT_EXCEEDED')).toContain('still active');
       expect(formatErrorMessage('AUTH_REQUIRED')).toContain('Authentication required');
       expect(formatErrorMessage('AUTH_FAILED')).toContain('Authentication failed or token expired');
-      expect(formatErrorMessage('BUFFER_OVERFLOW')).toContain('buffer limit exceeded');
+      // Chunk 9.8D: BUFFER_OVERFLOW is discard-and-continue, not "restart stream".
+      expect(formatErrorMessage('BUFFER_OVERFLOW')).toContain('utterance was discarded');
+      expect(formatErrorMessage('BUFFER_OVERFLOW')).toContain('still active');
+      expect(formatErrorMessage('BUFFER_OVERFLOW')).not.toContain('restart');
     });
 
     it('falls back to raw message if available for unknown codes', () => {

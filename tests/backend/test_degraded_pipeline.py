@@ -19,11 +19,26 @@ import httpx
 from fastapi.testclient import TestClient
 
 from backend.app.core.config import settings
-from backend.app.core.security import create_access_token
+from backend.app.core.security import create_access_token, hash_password
+from backend.app.core.database import get_db_session
+from backend.app.models.user import User
 from backend.app.services.llm_service import llm_service
 from backend.app.services.tts_service import tts_service
 from backend.app.services.rag_service import rag_service
 from tests.backend.test_tts_service import FakeEngineForTests
+
+
+def _ensure_degraded_user(user_id: str, username: str) -> None:
+    """Creates the user row backing a test JWT so FK enforcement accepts sessions."""
+    with get_db_session() as db:
+        if db.query(User).filter(User.id == user_id).first() is None:
+            db.add(User(
+                id=user_id,
+                username=username,
+                hashed_password=hash_password("test_password_123"),
+                is_active=True,
+            ))
+            db.commit()
 from tests.test_doubles import FakeEmbeddings
 
 
@@ -195,6 +210,7 @@ def test_degraded_variant_no_db(client, monkeypatch, caplog):
     When database persistence fails (e.g. connection refused or pool exhausted),
     WebSocket turn finishes without delay and failure is safely logged and swallowed.
     """
+    _ensure_degraded_user("usr_degraded_test", "degraded_tester")
     token = create_access_token(user_id="usr_degraded_test", username="degraded_tester")
 
     sse_chunks = [
@@ -241,6 +257,7 @@ def test_degraded_variant_all_four_down(client, monkeypatch, tmp_path):
     Even with LLM offline, RAG missing, TTS disabled, and DB down,
     speech_result is STILL produced and delivered over WebSocket!
     """
+    _ensure_degraded_user("usr_catastrophe", "catastrophe_tester")
     token = create_access_token(user_id="usr_catastrophe", username="catastrophe_tester")
 
     # 1. RAG missing

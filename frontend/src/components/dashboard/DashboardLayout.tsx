@@ -1,19 +1,36 @@
 import React from 'react';
-import { Radio, Moon, Sun, User as UserIcon, Lock } from 'lucide-react';
+import {
+  AudioLines,
+  LayoutDashboard,
+  MessageSquare,
+  Settings,
+  Moon,
+  Sun,
+  User as UserIcon,
+  Lock,
+} from 'lucide-react';
 import { WebSocketConnectionState } from '../../types/websocket';
 import { StatusDot } from '../ui/StatusDot';
 import { UserResponse } from '../../services/api';
+
+export type DashboardTab = 'voice' | 'history' | 'settings';
 
 export interface DashboardLayoutProps {
   children: React.ReactNode;
   connectionState: WebSocketConnectionState;
   isDark: boolean;
   onToggleTheme: () => void;
-  activeTab?: 'voice' | 'history';
-  onSelectTab?: (tab: 'voice' | 'history') => void;
+  activeTab?: DashboardTab;
+  onSelectTab?: (tab: DashboardTab) => void;
   currentUser?: UserResponse | null;
   onOpenAuth?: () => void;
 }
+
+const NAV_ITEMS: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'voice', label: 'Overview', icon: <LayoutDashboard size={18} aria-hidden="true" /> },
+  { id: 'history', label: 'Conversations', icon: <MessageSquare size={18} aria-hidden="true" /> },
+  { id: 'settings', label: 'Settings', icon: <Settings size={18} aria-hidden="true" /> },
+];
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
@@ -28,7 +45,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const getConnectionLabel = () => {
     switch (connectionState) {
       case 'connected':
-        return 'Connected (WebSocket v1)';
+        return 'Connected';
       case 'connecting':
         return 'Connecting...';
       case 'reconnecting':
@@ -41,193 +58,100 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     }
   };
 
-  return (
-    <div className="app-wrapper">
-      {/* Top Header */}
-      <header
-        style={{
-          borderBottom: '1px solid var(--border-subtle)',
-          backgroundColor: 'var(--bg-surface)',
-          padding: '0.85rem 1.5rem',
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '1200px',
-            margin: '0 auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem',
-          }}
+  const renderNav = (variant: 'sidebar' | 'bottom') => (
+    <nav
+      className={variant === 'sidebar' ? 'sidebar-nav' : 'bottom-nav'}
+      aria-label="Dashboard sections"
+    >
+      {NAV_ITEMS.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          aria-current={activeTab === item.id ? 'page' : undefined}
+          className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
+          onClick={() => onSelectTab?.(item.id)}
         >
-          {/* Brand Logo & Name */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'var(--color-voice)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFFFFF',
-                boxShadow: '0 2px 8px var(--color-voice-glow)',
-              }}
-            >
-              <Radio size={20} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
-                VoiceSense AI
-              </h1>
-              <p style={{ fontSize: '0.75rem', margin: 0, color: 'var(--text-muted)' }}>
-                Multilingual Speech &amp; Emotion Assistant
-              </p>
-            </div>
+          {item.icon}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+
+  return (
+    <div className="app-shell">
+      {/* Desktop sidebar */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-mark" aria-hidden="true">
+            <AudioLines size={19} strokeWidth={2.2} />
+          </div>
+          <div className="brand-text">
+            <span className="brand-name">VoiceSense AI</span>
+            <span className="brand-tagline">Local voice assistant</span>
+          </div>
+        </div>
+
+        {renderNav('sidebar')}
+
+        <div className="sidebar-footer">
+          <div className="sidebar-status" role="status" title={`WebSocket connection: ${getConnectionLabel()}`}>
+            <StatusDot
+              status={connectionState}
+              size={8}
+              pulse={connectionState === 'connecting' || connectionState === 'reconnecting'}
+            />
+            <span>{getConnectionLabel()}</span>
           </div>
 
-          {/* Navigation Tabs */}
-          {onSelectTab && (
-            <div
-              role="tablist"
-              aria-label="Dashboard sections"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                backgroundColor: 'var(--bg-surface-elevated)',
-                padding: '0.2rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-subtle)',
-              }}
+          {onOpenAuth && (
+            <button
+              type="button"
+              onClick={onOpenAuth}
+              className="sidebar-user"
+              aria-label={currentUser ? `Account: ${currentUser.username}` : 'Sign in or register'}
+              style={{ border: 'none', cursor: 'pointer', fontFamily: 'var(--font-main)', width: '100%' }}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === 'voice'}
-                onClick={() => onSelectTab('voice')}
-                style={{
-                  padding: '0.35rem 0.85rem',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: activeTab === 'voice' ? 'var(--color-voice)' : 'transparent',
-                  color: activeTab === 'voice' ? '#FFFFFF' : 'var(--text-secondary)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Voice Console
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === 'history'}
-                onClick={() => onSelectTab('history')}
-                style={{
-                  padding: '0.35rem 0.85rem',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: activeTab === 'history' ? 'var(--color-voice)' : 'transparent',
-                  color: activeTab === 'history' ? '#FFFFFF' : 'var(--text-secondary)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                History
-              </button>
-            </div>
+              <span className="sidebar-user-icon">
+                {currentUser ? <UserIcon size={15} aria-hidden="true" /> : <Lock size={14} aria-hidden="true" />}
+              </span>
+              <span className="sidebar-user-text">
+                <span className="sidebar-user-name">
+                  {currentUser ? currentUser.username : 'Guest'}
+                </span>
+                <span className="sidebar-user-hint">
+                  {currentUser ? 'Signed in' : 'Sign in for history'}
+                </span>
+              </span>
+            </button>
           )}
 
-          {/* Connection Status & User Account Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.45rem',
-                fontSize: '0.8rem',
-                color: 'var(--text-secondary)',
-                backgroundColor: 'var(--bg-surface-elevated)',
-                padding: '0.35rem 0.75rem',
-                borderRadius: 'var(--radius-full)',
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              <StatusDot status={connectionState} size={8} pulse={connectionState === 'connecting' || connectionState === 'reconnecting'} />
-              <span>{getConnectionLabel()}</span>
-            </div>
-
-            {/* Auth / Account Button */}
-            {onOpenAuth && (
-              <button
-                type="button"
-                onClick={onOpenAuth}
-                aria-label={currentUser ? `Account: ${currentUser.username}` : 'Sign in or register'}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: 'var(--radius-full)',
-                  border: '1px solid var(--border-subtle)',
-                  backgroundColor: currentUser ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-surface-elevated)',
-                  color: currentUser ? 'var(--color-voice)' : 'var(--text-secondary)',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {currentUser ? (
-                  <>
-                    <UserIcon size={14} />
-                    <span>{currentUser.username}</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock size={14} />
-                    <span>Sign In</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* Dark / Light Toggle */}
+          <div className="sidebar-theme-row">
+            <span className="sidebar-theme-label">
+              {isDark ? 'Dark theme' : 'Light theme'}
+            </span>
             <button
               type="button"
               onClick={onToggleTheme}
+              className="theme-toggle"
               aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '34px',
-                height: '34px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-subtle)',
-                backgroundColor: 'var(--bg-surface-elevated)',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-              }}
+              title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
             >
-              {isDark ? <Sun size={17} /> : <Moon size={17} />}
+              {isDark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             </button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Main Content Area */}
-      <main className="main-content">
-        {children}
-      </main>
+      {/* Main content */}
+      <div className="content-shell">
+        <main className="main-content content-body">
+          {children}
+        </main>
+      </div>
+
+      {/* Mobile bottom navigation */}
+      {renderNav('bottom')}
     </div>
   );
 };

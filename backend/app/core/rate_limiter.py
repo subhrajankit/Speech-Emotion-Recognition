@@ -85,6 +85,21 @@ class SessionRateLimiter:
 
         self._utterance_history[session_id].append(now)
 
+    def refund_utterance(self, session_id: str) -> None:
+        """
+        Remove the most recently recorded utterance for the session.
+
+        Used when an attempt recorded before inference is confirmed to
+        contain no speech, so confirmed silence does not consume the
+        rate-limit budget. Session utterances are processed sequentially on
+        the WebSocket event loop and each session_id owns its history list,
+        so popping the newest timestamp can only refund the attempt that was
+        just recorded — never a different session's or a later utterance's.
+        """
+        history = self._utterance_history.get(session_id)
+        if history:
+            history.pop()
+
     def validate_audio_chunk(
         self,
         accumulated_bytes: int,

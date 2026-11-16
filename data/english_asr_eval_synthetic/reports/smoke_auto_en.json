@@ -1,0 +1,95 @@
+{
+  "modes": {
+    "auto": {
+      "aggregate": {
+        "wer": 0.8947368421052632,
+        "cer": 0.9292035398230089,
+        "total_ref_words": 19,
+        "substitutions": 0,
+        "deletions": 17,
+        "insertions": 0,
+        "detected_language_counts": {
+          "en": 2
+        }
+      },
+      "per_file": [
+        {
+          "recording_id": "EN_SYN_001",
+          "speaker_id": "EN_S99",
+          "split": "dev",
+          "detected_language": "en",
+          "detected_language_source": "sensevoice_tag",
+          "transcript": "Hello, how.",
+          "wer": 0.6,
+          "cer": 0.5789473684210527,
+          "ref_words": 5,
+          "substitutions": 0,
+          "deletions": 3,
+          "insertions": 0,
+          "ref_chars": 19
+        },
+        {
+          "recording_id": "EN_SYN_002",
+          "speaker_id": "EN_S99",
+          "split": "dev",
+          "detected_language": "en",
+          "detected_language_source": "sensevoice_tag",
+          "transcript": ".",
+          "wer": 1.0,
+          "cer": 1.0,
+          "ref_words": 14,
+          "substitutions": 0,
+          "deletions": 14,
+          "insertions": 0,
+          "ref_chars": 94
+        }
+      ]
+    },
+    "en": {
+      "aggregate": {
+        "wer": 0.8947368421052632,
+        "cer": 0.8938053097345132,
+        "total_ref_words": 19,
+        "substitutions": 3,
+        "deletions": 14,
+        "insertions": 0,
+        "detected_language_counts": {
+          "en": 2
+        }
+      },
+      "per_file": [
+        {
+          "recording_id": "EN_SYN_001",
+          "speaker_id": "EN_S99",
+          "split": "dev",
+          "detected_language": "en",
+          "detected_language_source": "sensevoice_tag",
+          "transcript": "Hello, how is.",
+          "wer": 0.6,
+          "cer": 0.5263157894736842,
+          "ref_words": 5,
+          "substitutions": 1,
+          "deletions": 2,
+          "insertions": 0,
+          "ref_chars": 19
+        },
+        {
+          "recording_id": "EN_SYN_002",
+          "speaker_id": "EN_S99",
+          "split": "dev",
+          "detected_language": "en",
+          "detected_language_source": "sensevoice_tag",
+          "transcript": "V you.",
+          "wer": 1.0,
+          "cer": 0.9680851063829787,
+          "ref_words": 14,
+          "substitutions": 2,
+          "deletions": 12,
+          "insertions": 0,
+          "ref_chars": 94
+        }
+      ]
+    }
+  },
+  "files": 2
+}

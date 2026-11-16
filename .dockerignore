@@ -1,0 +1,82 @@
+# ==============================================================================
+# VoiceSense AI — Docker Build Context Exclusions
+# Ensures zero model weights, RAG data, secrets, venvs, audio samples, or git history enter images.
+# ==============================================================================
+
+# Version control & editor state
+.git
+.gitignore
+.github
+.vscode
+.idea
+.agents
+
+# Secrets & local env overrides (preserve template only)
+.env
+.env.*
+!.env.example
+
+# Model weights, caches, databases & runtime state (mounted at runtime only)
+models/
+data/
+database/
+logs/
+backups/
+tmp/
+temp/
+*.gguf
+*.onnx
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.npz
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+*.faiss
+
+# Python virtual environments & bytecode caches
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Frontend build artifacts & dependencies
+node_modules/
+**/node_modules/
+frontend/dist/
+frontend/.vite/
+dist/
+
+# Test fixtures, raw audio samples & verification run logs
+tests/
+tests/samples/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.webm
+*.m4a
+
+# Documentation, runbooks & quarantined legacy tree
+docs/
+docs/deployment/runs/
+docs/training/runs/
+src/
+docker/
+brain/
+runbooks/
+*.tar
+*.zip
+

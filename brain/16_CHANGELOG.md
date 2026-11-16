@@ -2,6 +2,45 @@
 
 All notable changes across build phases are recorded here.
 
+## [Phase D] - Dedicated Acoustic Speech Emotion Recognition (emotion2vec_plus_base) (2026-11-17)
+- **Dedicated Acoustic SER Engine (`ai/inference/emotion2vec.py`)**:
+  - Implemented `Emotion2VecSpeechEngine` conforming to `EmotionEngine` ABC, utilizing local `models/emotion/emotion2vec-plus-base` checkpoint (1.11 GB `model.pt`).
+  - Preprocesses buffered audio to 16 kHz mono float32 in-memory arrays; zero disk audio persistence.
+  - Low-amplitude acoustic silence gating ($< 10^{-4}$ amplitude mapped to `unknown`).
+  - Strict 9-class to 4-class mapping policy: `angry`, `happy`, `neutral`, `sad` mapped directly; `disgusted`, `fearful`, `surprised`, `other`, `<unk>` explicitly mapped to `unknown` with raw label preserved in telemetry.
+  - Confidence threshold $\tau = 0.60$: predictions with confidence $< 0.60$ map to `unknown`, rendering `Unknown (-)` in frontend `EmotionBadge`.
+  - Lazy singleton loading with thread locking and CPU thread clamping (`torch.set_num_threads(2)`).
+- **Service Integration Behind Disabled Feature Flag (`backend/app/core/config.py`, `speech_service.py`)**:
+  - Configured `EMOTION2VEC_ENABLED=False` (default-disabled) to ensure zero regression on existing pipeline.
+  - Added routing strategy toggle `EMOTION_ROUTING_STRATEGY="dedicated_primary"` (`dedicated_primary` | `hybrid_fallback`).
+  - Enforced bounded concurrency via `asyncio.Semaphore(1)` on CPU forward passes.
+  - Dispatched inference off FastAPI event loop via `asyncio.to_thread` to maintain WebSocket pump responsiveness.
+  - Primary ASR (SenseVoiceSmall / IndicConformer) executes first; SER enriches `SpeechResult` with genuine calibrated confidence, 9-class posterior scores, and source metadata.
+  - Fault isolation: In the event of SER inference errors, primary ASR transcript is preserved intact and fallback telemetry is logged.
+  - Enhanced `get_health_status()` with SER component status and configuration telemetry.
+- **Database Persistence (`backend/app/services/history_service.py`)**:
+  - Persists genuine model confidence and raw model labels in `emotion_results` table when available, maintaining NULL for uncalibrated/unavailable values.
+- **CI & Test Verification**:
+  - Verified architectural isolation (`scripts/ci/check_import_isolation.py`): 0 violations.
+  - Added 8 unit tests in `tests/ai/test_emotion2vec_engine.py` (label normalization, lazy loading, silence handling, thresholding).
+  - Added 7 integration tests in `tests/backend/test_emotion2vec_service.py` (flag OFF baseline, dedicated_primary, hybrid_fallback, fault isolation, health status).
+  - Verified full WebSocket & history regression suite: 41 passed in 26.44s.
+
+
+## [Chunk 4A] - VoxLingua107 Tier-2 Language Identifier (2026-11-13)
+- **Concrete LID Detector (`ai/routing/language_identifier.py`)**:
+  - Implemented `VoxLingua107LanguageIdentifier` conforming to the `LanguageIdentifier` protocol, replicating `speechbrain.inference.classifiers.EncoderClassifier`'s forward pass (`compute_features` → `mean_var_norm` → `embedding_model` → `classifier` → softmax) against the local `models/voxlingua107/` checkpoints.
+  - Manual module loading via `hyperpyyaml` + `CategoricalEncoder` because the local `label_encoder.ckpt` filename/layout is incompatible with `Pretrainer` HF path resolution; zero downloads permitted.
+  - Lazy one-time loading guarded by a lock; failed loads are cached and never retried; empty/silent/non-finite audio and all inference errors degrade to `("unknown", 0.0)`, which the router's confidence threshold treats as below-threshold fallback.
+  - Explicit label mapping `'xx: Name'` → ISO code with obsolete-code aliases `iw→he`, `jw→jv` (upstream model card issue #2396); malformed labels return `unknown`, never guessed.
+- **Configuration-Gated Integration (`backend/app/core/config.py`, `speech_service.py`)**:
+  - New settings `LID_ENABLED` (default `False`) and `LID_MODEL_DIR` (default `models/voxlingua107`); `LID_CONFIDENCE_THRESHOLD=0.6` unchanged.
+  - `SpeechService.initialize` injects the detector into `LanguageRouter` only when enabled and all four artifacts exist; any failure logs a warning and retains hint/default-only behavior.
+  - `transcribe_array` now runs `get_engine_for_utterance` (routing + LID) via `asyncio.to_thread` so synchronous LID inference cannot block the event loop.
+- **Dependencies & Docs**: added `speechbrain>=1.0.0` (pulls `hyperpyyaml`) to `requirements/ml.txt`; documented `LID_ENABLED`/`LID_MODEL_DIR` in `.env.example`. LID remains OFF by default; enabling is a separate operator decision.
+- **Tests**: 30 new tests (`tests/ai/test_voxlingua_lid.py`, `tests/backend/test_lid_service.py`) covering artifact validation, lazy once-only loading, label mapping, confidence passthrough, safe degradation, config gating, hint precedence, and event-loop non-blocking. Full CI-lite suite: 222 passed, 11 deselected.
+- **Empirical Note**: real-weight smoke run confirms zh→`zh`@1.000; short/synthetic clips yield low-confidence outputs (e.g. `sa`@0.448, `mt`@0.557) that correctly fall below the 0.6 threshold to the default engine — safe degradation, not misrouting.
+
 ## [Phase 12] - Documentation and Final Claims Audit (2026-11-13)
 - **Empirical Documentation & Truth-Tied README**:
   - Completely overhauled `README.md` across all 16 required sections: project overview, Mermaid architecture diagram, verified features only, tech stack, Windows/Linux setup, local development commands, model setup (pinned IndicConformer revision `2a77d305038dfc502fd9464e7d028b90381976cb`, gated HF access), environment variables, OpenAPI & WebSocket protocol, SER training & smoke run, evaluation benchmarks, Docker deployment, project structure, research-paper experiments ledger, and honest limitations.

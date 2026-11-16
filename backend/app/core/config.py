@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[str, List[str]] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
@@ -36,7 +38,6 @@ class Settings(BaseSettings):
 
     # Security & Auth
     AUTH_REQUIRED: bool = False
-    REQUIRE_AUTH: bool = False
     JWT_SECRET: str = "voicesense-insecure-secret-key-change-in-prod"
     SESSION_TIMEOUT_MINUTES: int = 60
 
@@ -73,13 +74,25 @@ class Settings(BaseSettings):
     SENSEVOICE_MODEL_DIR: str = "iic/SenseVoiceSmall"
     SENSEVOICE_DEVICE: str = "cpu"
     SENSEVOICE_THREADS: int = 4
+    # English-only MVP gate: disables IndicConformer construction and Tier-2 LID.
+    ASR_ENGLISH_ONLY: bool = True
     INDICCONFORMER_MODEL_DIR: str = "ai4bharat/indic-conformer-600m-multilingual"
     INDICCONFORMER_REVISION: str = "2a77d305038dfc502fd9464e7d028b90381976cb"
     INDICCONFORMER_DEVICE: str = "cpu"
     INDICCONFORMER_DECODER_TYPE: str = "ctc"
     LID_CONFIDENCE_THRESHOLD: float = 0.6
+    LID_ENABLED: bool = False
+    LID_MODEL_DIR: str = "models/voxlingua107"
     LAZY_LOAD_MODELS: bool = True
     PRELOAD_DEFAULT_ENGINE: bool = False
+
+    # Emotion2Vec Settings (Acoustic SER Engine — models/emotion/emotion2vec-plus-base)
+    EMOTION2VEC_ENABLED: bool = False  # Disabled by default; feature-flagged for safe integration
+    EMOTION2VEC_MODEL_DIR: str = "models/emotion/emotion2vec-plus-base"
+    EMOTION2VEC_DEVICE: str = "cpu"
+    EMOTION2VEC_THREADS: int = 2
+    EMOTION2VEC_CONFIDENCE_THRESHOLD: float = 0.60
+    EMOTION_ROUTING_STRATEGY: str = "dedicated_primary"  # "dedicated_primary" | "hybrid_fallback" | "sensevoice_only"
 
     # LLM Settings (Qwen3 via local llama.cpp)
     LLM_BASE_URL: str = "http://127.0.0.1:8080"
@@ -120,17 +133,25 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
-        env = (self.APP_ENV or self.ENVIRONMENT or "").lower()
-        if env == "production":
+        envs = {
+            (self.APP_ENV or "").lower(),
+            (self.ENVIRONMENT or "").lower(),
+        }
+        if "production" in envs:
             insecure_defaults = {
                 "voicesense-insecure-secret-key-change-in-prod",
+                "voicesense-dev-only-secret-change-in-prod-min-32-bytes",
                 "senseai-dev-secret-key-change-in-production-32bytesmin",
                 "secret",
                 "changeme",
             }
             if not self.JWT_SECRET or self.JWT_SECRET in insecure_defaults or len(self.JWT_SECRET) < 32:
                 raise ValueError(
-                    "APP_ENV=production refuses to start with missing, default, or weak JWT_SECRET (must be >= 32 characters)."
+                    "APP_ENV/ENVIRONMENT=production refuses to start with missing, default, or weak JWT_SECRET (must be >= 32 characters)."
+                )
+            if not self.AUTH_REQUIRED:
+                raise ValueError(
+                    "APP_ENV/ENVIRONMENT=production refuses to start with AUTH_REQUIRED=false; WebSocket authentication must be enforced."
                 )
         return self
 

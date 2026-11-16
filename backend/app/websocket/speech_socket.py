@@ -20,7 +20,13 @@ from backend.app.core.rate_limiter import (
     UtteranceRateLimitExceeded,
     AudioDurationLimitExceeded,
 )
-from backend.app.services.speech_service import speech_service
+from backend.app.core.database import get_db_session
+from backend.app.models.user import User
+from backend.app.services.speech_service import (
+    speech_service,
+    normalize_language_hint,
+    InvalidLanguageHintError,
+)
 from backend.app.services.history_service import history_service
 from backend.app.services.llm_service import (
     llm_service,
@@ -55,6 +61,22 @@ async def safe_send_json(websocket: WebSocket, data: Dict[str, Any]) -> bool:
         return True
     except (WebSocketDisconnect, RuntimeError):
         return False
+
+
+def _is_no_speech_result(speech_res) -> bool:
+    """
+    Confirmed no-speech contract.
+
+    Both active ASR engines return ``transcript=""`` when their internal VAD
+    gate finds no speech (SenseVoiceSmall debug.status 'no_speech_detected'/
+    'empty_audio'; IndicConformer-600m likewise reports 'no_speech_detected').
+    An empty transcript can never produce a useful turn, LLM prompt, or
+    history record — handle_llm_turn early-returns on it — so an empty or
+    whitespace-only transcript is treated as authoritative no-speech
+    regardless of engine-specific debug metadata. Genuine short utterances
+    still return non-empty transcripts and follow the normal path.
+    """
+    return not (speech_res.transcript or "").strip()
 
 
 async def handle_llm_turn(
@@ -270,6 +292,46 @@ async def speech_websocket_endpoint(websocket: WebSocket):
             "engine": engine,
         })
 
+    async def emit_result_and_start_llm(
+        audio_bytes: bytes,
+        speech_res,
+        flushed_on_stop: bool,
+    ) -> None:
+        """
+        Emits speech_result for a completed utterance and starts the
+        (cancelable) LLM turn. Shared by the VAD silence-timeout path and
+        the manual stop-flush path.
+        """
+        nonlocal active_llm_task
+        duration_ms = round((len(audio_bytes) / (sample_rate * 2)) * 1000.0, 1)
+        speech_payload = speech_res.model_dump()
+        speech_payload["debug"] = speech_payload.get("debug") or {}
+        speech_payload["debug"].update({
+            "segment_index": vad_segment_count,
+            "segment_bytes": len(audio_bytes),
+            "segment_duration_s": round(duration_ms / 1000.0, 2),
+            "session_total_audio_bytes": session_total_audio_bytes,
+            "flushed_on_stop": flushed_on_stop,
+        })
+        await safe_send_json(websocket, {
+            "type": "speech_result",
+            **speech_payload,
+        })
+        await cancel_active_llm()
+        active_llm_task = asyncio.create_task(
+            handle_llm_turn(
+                websocket=websocket,
+                session_id=session_id,
+                user_id=user_id,
+                transcript=speech_res.transcript,
+                emotion=speech_res.emotion,
+                language=speech_res.language,
+                conversation_history=conversation_history,
+                speech_payload=speech_payload,
+                audio_duration_ms=duration_ms,
+            )
+        )
+
     vad = SileroVAD(threshold=settings.VAD_THRESHOLD)
     segmenter = VADSpeechSegmenter(
         vad=vad,
@@ -345,6 +407,17 @@ async def speech_websocket_endpoint(websocket: WebSocket):
 
                 # Start streaming session
                 if action == "start":
+                    raw_language_hint = payload.get("language_hint")
+                    try:
+                        normalized_language_hint = normalize_language_hint(raw_language_hint)
+                    except InvalidLanguageHintError as e:
+                        await safe_send_json(websocket, {
+                            "type": "error",
+                            "code": "INVALID_LANGUAGE_HINT",
+                            "message": str(e),
+                        })
+                        continue
+
                     await cancel_active_llm()
 
                     # 1. In-frame JWT authentication verification
@@ -397,10 +470,31 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             # Anonymous user: nothing persisted
                             user_id = None
 
+                    # A validly signed JWT is not sufficient: the subject must
+                    # reference an existing user, otherwise history persistence
+                    # would create orphaned sessions (rejected by FK enforcement).
+                    if user_id is not None:
+                        try:
+                            with get_db_session() as db:
+                                user_exists = db.query(User.id).filter(User.id == user_id).first() is not None
+                        except Exception:
+                            user_exists = False
+                        if not user_exists:
+                            await safe_send_json(websocket, {
+                                "type": "error",
+                                "code": "AUTH_FAILED",
+                                "message": "Authentication failed: token subject does not reference an existing user.",
+                            })
+                            await websocket.close(
+                                code=status.WS_1008_POLICY_VIOLATION,
+                                reason="Authentication failed"
+                            )
+                            return
+
                     session_id = payload.get("session_id") or session_id
                     sample_rate = int(payload.get("sample_rate", 16000))
                     encoding = payload.get("encoding", "pcm_s16le")
-                    language_hint = payload.get("language_hint")
+                    language_hint = normalized_language_hint
 
                     segmenter.sample_rate = sample_rate
                     segmenter.reset()
@@ -440,7 +534,6 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             continue
 
                         vad_segment_count += 1
-                        duration_ms = round((len(flushed_audio) / (sample_rate * 2)) * 1000.0, 1)
 
                         try:
                             speech_res = await speech_service.transcribe_pcm16_bytes(
@@ -449,33 +542,20 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                                 language_hint=language_hint,
                                 status_callback=send_engine_status,
                             )
-                            speech_payload = speech_res.model_dump()
-                            speech_payload["debug"] = speech_payload.get("debug") or {}
-                            speech_payload["debug"].update({
-                                "segment_index": vad_segment_count,
-                                "segment_bytes": len(flushed_audio),
-                                "segment_duration_s": round(duration_ms / 1000.0, 2),
-                                "session_total_audio_bytes": session_total_audio_bytes,
-                                "flushed_on_stop": True,
-                            })
-                            await safe_send_json(websocket, {
-                                "type": "speech_result",
-                                **speech_payload
-                            })
-                            await cancel_active_llm()
-                            active_llm_task = asyncio.create_task(
-                                handle_llm_turn(
-                                    websocket=websocket,
-                                    session_id=session_id,
-                                    user_id=user_id,
-                                    transcript=speech_res.transcript,
-                                    emotion=speech_res.emotion,
-                                    language=speech_res.language,
-                                    conversation_history=conversation_history,
-                                    speech_payload=speech_payload,
-                                    audio_duration_ms=duration_ms,
+                            if _is_no_speech_result(speech_res):
+                                # Confirmed silence: refund the pre-inference
+                                # rate-limit slot and report a non-error status
+                                # instead of a normal speech_result.
+                                session_rate_limiter.refund_utterance(session_id)
+                                await safe_send_json(websocket, {
+                                    "type": "status",
+                                    "state": "no_speech",
+                                    "message": "No speech detected in the audio.",
+                                })
+                            else:
+                                await emit_result_and_start_llm(
+                                    flushed_audio, speech_res, flushed_on_stop=True
                                 )
-                            )
                         except Exception as e:
                             logger.error(f"Inference error during stop flush: {e}")
                             await safe_send_json(websocket, {
@@ -483,6 +563,16 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                                 "code": "INFERENCE_ERROR",
                                 "message": str(e)
                             })
+                    elif not flushed_audio:
+                        # Idle stop: the segmenter held no genuine speech, so its
+                        # non-speech pre-buffer is never submitted to ASR. Report
+                        # the same non-error no_speech status used for
+                        # engine-confirmed silence.
+                        await safe_send_json(websocket, {
+                            "type": "status",
+                            "state": "no_speech",
+                            "message": "No speech detected in the audio.",
+                        })
 
                     is_started = False
                     total_accumulated_bytes = 0
@@ -560,7 +650,6 @@ async def speech_websocket_endpoint(websocket: WebSocket):
 
                     total_accumulated_bytes = 0
                     vad_segment_count += 1
-                    duration_ms = round((len(completed_utterance) / (sample_rate * 2)) * 1000.0, 1)
 
                     # Utterance rate limit check
                     try:
@@ -581,33 +670,20 @@ async def speech_websocket_endpoint(websocket: WebSocket):
                             language_hint=language_hint,
                             status_callback=send_engine_status,
                         )
-                        speech_payload = speech_res.model_dump()
-                        speech_payload["debug"] = speech_payload.get("debug") or {}
-                        speech_payload["debug"].update({
-                            "segment_index": vad_segment_count,
-                            "segment_bytes": len(completed_utterance),
-                            "segment_duration_s": round(duration_ms / 1000.0, 2),
-                            "session_total_audio_bytes": session_total_audio_bytes,
-                            "flushed_on_stop": False,
-                        })
-                        await websocket.send_json({
-                            "type": "speech_result",
-                            **speech_payload
-                        })
-                        await cancel_active_llm()
-                        active_llm_task = asyncio.create_task(
-                            handle_llm_turn(
-                                websocket=websocket,
-                                session_id=session_id,
-                                user_id=user_id,
-                                transcript=speech_res.transcript,
-                                emotion=speech_res.emotion,
-                                language=speech_res.language,
-                                conversation_history=conversation_history,
-                                speech_payload=speech_payload,
-                                audio_duration_ms=duration_ms,
+                        if _is_no_speech_result(speech_res):
+                            # Confirmed silence: refund the pre-inference
+                            # rate-limit slot and report a non-error status
+                            # instead of a normal speech_result.
+                            session_rate_limiter.refund_utterance(session_id)
+                            await safe_send_json(websocket, {
+                                "type": "status",
+                                "state": "no_speech",
+                                "message": "No speech detected in the audio.",
+                            })
+                        else:
+                            await emit_result_and_start_llm(
+                                completed_utterance, speech_res, flushed_on_stop=False
                             )
-                        )
                     except Exception as e:
                         logger.error(f"Inference error on completed utterance: {e}")
                         await safe_send_json(websocket, {

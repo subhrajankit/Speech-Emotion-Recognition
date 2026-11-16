@@ -38,10 +38,9 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
    ```
    - `sample_rate`: Sample rate in Hz (default: `16000`).
    - `encoding`: Audio encoding format. Currently supported: `"pcm_s16le"` (16-bit signed integer, linear PCM, little-endian, mono).
-   - `language_hint`: Optional ISO 639-1 language code hint or `null`:
-     - Indic languages (`"hi"`, `"bn"`, `"mr"`, `"ta"`, `"te"`, etc.): routes to IndicConformer-600m (CPU `ctc` by default).
-     - Global languages (`"en"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`): routes to SenseVoiceSmall.
-     - When `null` (Auto): always defaults to **SenseVoiceSmall**. Automatic spoken language identification (LID) is **not** wired into runtime routing (Phase 4b was deferred because tested LID models misclassified the Hindi sample and added RAM overhead). Use `"hi"` for Hindi speech.
+   - `language_hint`: Optional language code hint or `null`. **English-only MVP** (`ASR_ENGLISH_ONLY=true`, the default): accepted values are `"en"`, `"auto"`, empty, or `null`; any other hint (e.g. `"hi"`) is rejected with an `INVALID_LANGUAGE_HINT` error frame.
+     - Multilingual mode (`ASR_ENGLISH_ONLY=false`): Indic languages (`"hi"`, `"bn"`, `"mr"`, `"ta"`, `"te"`, etc.) route to IndicConformer-600m (CPU `ctc` by default); global languages (`"en"`, `"zh"`, `"yue"`, `"ja"`, `"ko"`) route to SenseVoiceSmall.
+     - When `null`/`"auto"` (Auto): always defaults to **SenseVoiceSmall**. Automatic spoken language identification (LID) is **not** wired into runtime routing (Phase 4b was deferred because tested LID models misclassified the Hindi sample and added RAM overhead).
    - `session_id`: Optional client-supplied session identifier. When omitted, the server generates `sess_<12-hex-chars>`.
    - `auth_token`: Optional (or mandatory if `AUTH_REQUIRED=true`) HS256 JWT access token acquired from `POST /api/auth/login` or `POST /api/auth/register`.
 
@@ -228,6 +227,14 @@ All control messages are formatted as UTF-8 JSON text frames. Audio stream data 
       "message": "Knowledge base index unavailable or no relevant chunks found; falling back to direct chat."
     }
     ```
+    Also emitted when ASR confirms an utterance contains no speech (including silent `stop` flushes). No `speech_result`, LLM turn, or history record is produced, and the pre-inference rate-limit slot is refunded:
+    ```json
+    {
+      "type": "status",
+      "state": "no_speech",
+      "message": "No speech detected in the audio."
+    }
+    ```
 
 12. **Error Frame (`error`)**:
     Emitted upon protocol violation, buffer overflow, or upstream/service error:
@@ -299,11 +306,11 @@ Any unknown message types received from the client are safely ignored.
 1. **Server-Side VAD Segmentation**:
    Audio chunks are processed through Silero VAD in 512-sample (32ms) frames with a 250ms pre-speech buffer. Speech ends after 700ms of sustained silence.
 2. **Buffer Limits**:
-   Per-connection memory buffer is capped at **5 MB** (`WS_MAX_BUFFER_BYTES`). Exceeding this threshold triggers an immediate `BUFFER_OVERFLOW` error and buffer reset.
+   Per-connection memory buffer is capped at **5 MB** (`WS_MAX_BUFFER_BYTES`). Exceeding this threshold triggers an immediate `BUFFER_OVERFLOW` error and buffer reset. The session stays started — only the in-progress utterance buffer is discarded and the client may continue speaking.
 3. **Turn Rate Limiting**:
    Sessions are capped at a maximum of **20 utterances per 60-second sliding window** (`RATE_LIMIT_UTTERANCES_PER_MINUTE`). Exceeding this threshold triggers a `RATE_LIMIT_EXCEEDED` error frame.
 4. **Turn Audio Duration Cap**:
-   Individual audio turns cannot exceed **30.0 seconds** (`MAX_UTTERANCE_DURATION_SECONDS`). Audio exceeding this limit is rejected with `AUDIO_DURATION_LIMIT_EXCEEDED`.
+   Audio accumulated since the last completed utterance (including inter-utterance silence) cannot exceed **30.0 seconds** of audio (`MAX_UTTERANCE_DURATION_SECONDS`). Exceeding this limit is rejected with `AUDIO_DURATION_LIMIT_EXCEEDED`, which resets the segmenter buffer. The session stays started — only the current utterance is discarded and the client may continue speaking.
 5. **Zero Raw Audio Persistence**:
    Raw audio bytes and PCM waveforms are NEVER stored in the database or persisted to disk. Only processed transcripts, acoustic tags, and latency metrics are retained (authenticated sessions only when `STORE_TRANSCRIPTS=true`).
 6. **Resource Cleanup**:

@@ -14,3 +14,7 @@ export const getWsUrl = (): string => {
 export const isAuthRequired = (): boolean => {
   return import.meta.env.VITE_AUTH_REQUIRED === 'true';
 };
+
+export const isAsrEnglishOnly = (): boolean => {
+  return import.meta.env.VITE_ASR_ENGLISH_ONLY?.toLowerCase() !== 'false';
+};

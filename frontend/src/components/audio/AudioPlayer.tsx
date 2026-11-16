@@ -19,22 +19,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   if (ttsStatus === 'disabled') {
     return (
       <div
-        className={`audio-player-disabled ${className}`}
+        className={`player-disabled ${className}`}
         role="status"
         aria-live="polite"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          padding: '0.45rem 0.85rem',
-          borderRadius: 'var(--radius-sm)',
-          backgroundColor: 'var(--bg-base)',
-          border: '1px solid var(--border-subtle)',
-          fontSize: '0.8rem',
-          color: 'var(--text-muted)',
-        }}
       >
-        <MicOff size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        <MicOff size={14} aria-hidden="true" />
         <span>Voice replies are off on this server</span>
       </div>
     );
@@ -46,44 +35,21 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   return (
     <div
-      className={`audio-player ${className}`}
+      className={`player-bar ${className}`}
       role="region"
       aria-label="Assistant audio playback"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0.6rem 1rem',
-        borderRadius: 'var(--radius-sm)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        border: '1px solid rgba(59, 130, 246, 0.25)',
-        fontSize: '0.85rem',
-        width: '100%',
-        maxWidth: '400px',
-      }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--color-voice)' }}>
-        <Volume2 size={18} className="animate-pulse" />
-        <span style={{ fontWeight: 500 }}>Assistant speaking...</span>
+      <div className="player-status">
+        <Volume2 size={18} className="animate-pulse" aria-hidden="true" />
+        <span>Assistant speaking...</span>
       </div>
       <button
         type="button"
         onClick={onStop}
+        className="player-stop"
         aria-label="Stop audio playback"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.35rem',
-          background: 'transparent',
-          border: 'none',
-          color: 'var(--text-secondary)',
-          cursor: 'pointer',
-          padding: '0.2rem 0.5rem',
-          borderRadius: 'var(--radius-sm)',
-          fontSize: '0.8rem',
-        }}
       >
-        <VolumeX size={15} />
+        <VolumeX size={15} aria-hidden="true" />
         <span>Stop</span>
       </button>
     </div>

@@ -3,15 +3,22 @@ Speech upload API router for VoiceSense AI.
 Handles POST /api/speech/upload with in-memory decoding and zero disk persistence.
 """
 
+import logging
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 
 from ai.inference.types import SpeechResult
 from backend.app.core.config import settings
 from backend.app.schemas.errors import create_error_payload
-from backend.app.services.speech_service import speech_service
+from backend.app.services.speech_service import (
+    speech_service,
+    normalize_language_hint,
+    InvalidLanguageHintError,
+)
 
 router = APIRouter(prefix="/api/speech", tags=["speech"])
+
+logger = logging.getLogger("voicesense.api.speech")
 
 
 async def process_audio_upload(
@@ -23,6 +30,18 @@ async def process_audio_upload(
     Validates content type and size limits, decodes strictly in RAM,
     and invokes the non-blocking SpeechService.
     """
+    try:
+        language_hint = normalize_language_hint(language_hint)
+    except InvalidLanguageHintError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=create_error_payload(
+                code="INVALID_LANGUAGE_HINT",
+                message=str(e),
+                details={"allowed_hints": ["en", "auto", ""]}
+            )
+        )
+
     # 1. Content-Type validation
     content_type = (file.content_type or "").lower().strip()
     filename = (file.filename or "").lower()
@@ -42,19 +61,29 @@ async def process_audio_upload(
             )
         )
 
-    # 2. Read in-memory bytes
-    audio_bytes = await file.read()
-
-    # 3. Size limit check
-    if len(audio_bytes) > settings.MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=create_error_payload(
-                code="FILE_TOO_LARGE",
-                message=f"Uploaded audio ({len(audio_bytes)} bytes) exceeds limit of {settings.MAX_UPLOAD_SIZE_BYTES} bytes.",
-                details={"max_size_bytes": settings.MAX_UPLOAD_SIZE_BYTES, "received_bytes": len(audio_bytes)}
+    # 2. Bounded in-memory read: accumulate at most MAX_UPLOAD_SIZE_BYTES and
+    # stop reading as soon as the limit would be exceeded. Chunked reads avoid
+    # buffering an unbounded body before the size check can run.
+    max_size = settings.MAX_UPLOAD_SIZE_BYTES
+    chunks = []
+    total_bytes = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > max_size:
+            await file.close()
+            raise HTTPException(
+                status_code=413,
+                detail=create_error_payload(
+                    code="FILE_TOO_LARGE",
+                    message=f"Uploaded audio exceeds limit of {max_size} bytes.",
+                    details={"max_size_bytes": max_size}
+                )
             )
-        )
+        chunks.append(chunk)
+    audio_bytes = b"".join(chunks)
 
     # 4. Empty file check
     if len(audio_bytes) == 0:
@@ -75,12 +104,13 @@ async def process_audio_upload(
             with io.BytesIO(audio_bytes) as bio:
                 sf.read(bio)
         except Exception as e:
+            logger.exception("WAV container validation failed")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=create_error_payload(
                     code="DECODE_ERROR",
-                    message=f"Corrupted or invalid WAV audio data: {e}",
-                    details={"error": str(e)}
+                    message="Audio could not be decoded. Please provide a valid audio file.",
+                    details={"error": "Audio could not be decoded. Please provide a valid audio file."}
                 )
             )
 
@@ -93,21 +123,23 @@ async def process_audio_upload(
         )
         return result
     except ValueError as e:
+        logger.exception("Audio decoding failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=create_error_payload(
                 code="DECODE_ERROR",
-                message=f"Audio decoding failed: {e}",
-                details={"error": str(e)}
+                message="Audio could not be decoded. Please provide a valid audio file.",
+                details={"error": "Audio could not be decoded. Please provide a valid audio file."}
             )
         )
     except Exception as e:
+        logger.exception("Speech inference failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=create_error_payload(
                 code="INFERENCE_ERROR",
-                message=f"Speech inference failed: {e}",
-                details={"error": str(e)}
+                message="Audio processing failed. Please try again later.",
+                details={"error": "Audio processing failed. Please try again later."}
             )
         )
 

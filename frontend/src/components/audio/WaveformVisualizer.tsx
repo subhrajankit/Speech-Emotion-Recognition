@@ -7,6 +7,41 @@ export interface WaveformVisualizerProps {
   className?: string;
 }
 
+type VisualState = WaveformVisualizerProps['state'];
+
+// Resolve theme CSS custom properties once per theme change (cached by the
+// data-theme attribute value) so canvas colors track dark/light automatically.
+let cachedThemeKey: string | null = null;
+let cachedPalette: Record<VisualState, string> | null = null;
+
+const FALLBACK_PALETTE: Record<VisualState, string> = {
+  idle: '#3B82F6',
+  listening: '#06B6D4',
+  thinking: '#F59E0B',
+  speaking: '#3B82F6',
+};
+
+function getStatePalette(): Record<VisualState, string> {
+  if (typeof document === 'undefined') return FALLBACK_PALETTE;
+  const themeKey = document.documentElement.getAttribute('data-theme') || 'dark';
+  if (cachedPalette && cachedThemeKey === themeKey) return cachedPalette;
+
+  const styles = getComputedStyle(document.documentElement);
+  const read = (token: string, fallback: string) => {
+    const value = styles.getPropertyValue(token).trim();
+    return value || fallback;
+  };
+
+  cachedThemeKey = themeKey;
+  cachedPalette = {
+    idle: read('--color-voice', FALLBACK_PALETTE.idle),
+    listening: read('--color-signal', FALLBACK_PALETTE.listening),
+    thinking: read('--color-energy', FALLBACK_PALETTE.thinking),
+    speaking: read('--color-voice', FALLBACK_PALETTE.speaking),
+  };
+  return cachedPalette;
+}
+
 export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
   state,
   audioLevel = 0,
@@ -31,7 +66,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = height * dpr;
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     resize();
@@ -47,11 +82,8 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       const centerY = h / 2;
       phaseRef.current += prefersReducedMotion ? 0.005 : 0.04;
 
-      // Color mapping by state
-      let strokeColor = 'rgba(59, 130, 246, 0.7)'; // Voice blue
-      if (state === 'listening') strokeColor = 'rgba(6, 182, 212, 0.9)'; // Cyan wave
-      if (state === 'thinking') strokeColor = 'rgba(245, 158, 11, 0.85)'; // Amber
-      if (state === 'speaking') strokeColor = 'rgba(59, 130, 246, 0.95)';
+      // Theme-aware stroke color resolved from design tokens
+      const baseColor = getStatePalette()[state];
 
       // Draw multi-layer harmonic waves
       const wavesCount = state === 'idle' ? 2 : 4;
@@ -61,7 +93,8 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
         const wavePhase = phaseRef.current + i * 0.8;
         const opacity = 1 - i * 0.22;
 
-        ctx.strokeStyle = strokeColor.replace(/[\d.]+\)$/, `${opacity})`);
+        ctx.strokeStyle = baseColor;
+        ctx.globalAlpha = opacity;
         ctx.lineWidth = i === 0 ? 2.5 : 1.5;
 
         for (let x = 0; x < width; x += 3) {
@@ -94,6 +127,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
         }
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
 
       animFrameRef.current = requestAnimationFrame(render);
     };

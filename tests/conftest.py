@@ -6,14 +6,34 @@ with standardized environment settings and sys.path configuration.
 Does not import from legacy src/.
 """
 
+import atexit
 import math
 import os
+import shutil
 import struct
 import sys
+import tempfile
 from pathlib import Path
 
 # Enforce 1 OpenBLAS thread to prevent memory allocation failures on Windows
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
+# --- Test database isolation (MUST run before any backend.app.* import) ---
+# backend/app/core/database.py builds its engine/SessionLocal from
+# settings.DATABASE_URL at module import time, so the override has to be in
+# place before the first backend import anywhere in the session. This file is
+# loaded before all test modules and directory conftests. Unconditional: a
+# developer's local .env must never redirect tests to database/dev.db.
+_TEST_DB_DIR = tempfile.mkdtemp(prefix="voicesense_test_db_")
+_TEST_DB_FILE = Path(_TEST_DB_DIR) / "test.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_FILE.as_posix()}"
+
+
+def _cleanup_test_db_dir() -> None:
+    shutil.rmtree(_TEST_DB_DIR, ignore_errors=True)
+
+
+atexit.register(_cleanup_test_db_dir)
 
 # Ensure repo root is at the head of sys.path, and tests dir does not shadow root packages
 _repo_root = str(Path(__file__).parent.parent.resolve())
