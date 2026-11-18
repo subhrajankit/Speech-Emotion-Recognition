@@ -107,9 +107,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    if (mode === 'register' && password !== confirmPassword) {
-      setErrorMessage('Passwords do not match.');
-      return;
+    if (mode === 'register') {
+      if (trimmedUser.length < 3) {
+        setErrorMessage('Username must be at least 3 characters.');
+        return;
+      }
+      if (password.length < 6) {
+        setErrorMessage('Password must be at least 6 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setErrorMessage('Passwords do not match.');
+        return;
+      }
     }
 
     setIsLoading(true);

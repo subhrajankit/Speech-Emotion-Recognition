@@ -4,11 +4,23 @@
  */
 
 export const getApiUrl = (): string => {
-  return import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== 'undefined' && window.location) {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname || '127.0.0.1';
+    return `${protocol}//${hostname}:8000`;
+  }
+  return 'http://127.0.0.1:8000';
 };
 
 export const getWsUrl = (): string => {
-  return import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000/ws/speech';
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  if (typeof window !== 'undefined' && window.location) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const hostname = window.location.hostname || '127.0.0.1';
+    return `${protocol}//${hostname}:8000/ws/speech`;
+  }
+  return 'ws://127.0.0.1:8000/ws/speech';
 };
 
 export const isAuthRequired = (): boolean => {

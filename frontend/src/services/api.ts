@@ -41,6 +41,30 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return response.json();
 }
 
+export function extractApiErrorMessage(errorData: any, status: number, fallback: string): string {
+  if (!errorData) return `${fallback} (${status})`;
+  if (typeof errorData.detail === 'string' && errorData.detail.trim()) {
+    return errorData.detail.trim();
+  }
+  if (Array.isArray(errorData.detail)) {
+    const messages = errorData.detail
+      .map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (item && item.msg) {
+          const field = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : '';
+          return field ? `${field}: ${item.msg}` : item.msg;
+        }
+        return JSON.stringify(item);
+      })
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join('; ');
+  }
+  if (typeof errorData.message === 'string' && errorData.message.trim()) {
+    return errorData.message.trim();
+  }
+  return `${fallback} (${status})`;
+}
+
 /**
  * Register a new user account.
  * Endpoint: POST /api/auth/register
@@ -58,7 +82,7 @@ export async function registerUser(username: string, password: string): Promise<
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Registration failed with status ${response.status}`);
+    throw new Error(extractApiErrorMessage(errorData, response.status, 'Registration failed'));
   }
 
   return response.json();
@@ -81,7 +105,7 @@ export async function loginUser(username: string, password: string): Promise<Tok
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Login failed with status ${response.status}`);
+    throw new Error(extractApiErrorMessage(errorData, response.status, 'Login failed'));
   }
 
   return response.json();

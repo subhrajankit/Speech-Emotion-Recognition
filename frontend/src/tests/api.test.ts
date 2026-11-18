@@ -103,4 +103,33 @@ describe('Protected history API functions — consistent auth classification', (
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
   });
+
+  it('registerUser formats 422 array detail messages clearly', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(422, {
+          detail: [
+            { loc: ['body', 'username'], msg: 'String should have at least 3 characters' },
+            { loc: ['body', 'password'], msg: 'String should have at least 6 characters' },
+          ],
+        })
+      )
+    );
+    const { registerUser } = await import('../services/api');
+    await expect(registerUser('a', '1')).rejects.toThrow(
+      'username: String should have at least 3 characters; password: String should have at least 6 characters'
+    );
+  });
+
+  it('loginUser surfaces incorrect credentials string detail', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(401, { detail: 'Incorrect username or password.' })
+      )
+    );
+    const { loginUser } = await import('../services/api');
+    await expect(loginUser('user', 'badpass')).rejects.toThrow('Incorrect username or password.');
+  });
 });
